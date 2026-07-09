@@ -1,0 +1,5 @@
+package com.ishan.wheels.wheelchair_control
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
