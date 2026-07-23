@@ -20,13 +20,17 @@ class BatteryIndicator extends StatelessWidget {
       borderRadius: BorderRadius.circular(height),
       child: Stack(
         children: [
-          Container(height: height, color: Colors.white.withOpacity(0.08)),
+          Container(
+              height: height, color: Colors.white.withValues(alpha: 0.08)),
           FractionallySizedBox(
             widthFactor: value.toDouble(),
             child: Container(
               height: height,
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [AppColors.accent, color == AppColors.danger ? color : AppColors.accentDeep]),
+                gradient: LinearGradient(colors: [
+                  AppColors.accent,
+                  color == AppColors.danger ? color : AppColors.accentDeep
+                ]),
               ),
             ),
           ),

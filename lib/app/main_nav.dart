@@ -61,12 +61,12 @@ class _VayaBottomNav extends StatelessWidget {
       child: Container(
         height: 76,
         decoration: BoxDecoration(
-          color: AppColors.surfaceHigh.withOpacity(0.92),
+          color: AppColors.surfaceHigh.withValues(alpha: 0.92),
           borderRadius: BorderRadius.circular(36),
           border: Border.all(color: AppColors.border),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.35),
+              color: Colors.black.withValues(alpha: 0.35),
               blurRadius: 28,
               offset: const Offset(0, 16),
             ),
@@ -126,12 +126,16 @@ class _NavItem extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(icon, color: selected ? AppColors.accent : AppColors.textMuted, size: 28),
+                    Icon(icon,
+                        color:
+                            selected ? AppColors.accent : AppColors.textMuted,
+                        size: 28),
                     const SizedBox(height: 4),
                     Text(
                       label,
                       style: TextStyle(
-                        color: selected ? AppColors.accent : AppColors.textMuted,
+                        color:
+                            selected ? AppColors.accent : AppColors.textMuted,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),

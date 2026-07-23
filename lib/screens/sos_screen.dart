@@ -94,7 +94,7 @@ class _SosButton extends StatelessWidget {
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: AppColors.danger.withOpacity(0.35),
+                color: AppColors.danger.withValues(alpha: 0.35),
                 blurRadius: 24,
                 spreadRadius: 8,
               ),
@@ -126,7 +126,7 @@ class _EmergencyActionTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
+                color: AppColors.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(action.icon, color: AppColors.primary),

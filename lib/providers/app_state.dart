@@ -7,7 +7,8 @@ import '../services/wheelchair_commands.dart';
 class AppState extends ChangeNotifier {
   final WheelchairBluetooth _bt;
 
-  AppState({WheelchairBluetooth? bluetooth}) : _bt = bluetooth ?? WheelchairBluetooth() {
+  AppState({WheelchairBluetooth? bluetooth})
+      : _bt = bluetooth ?? WheelchairBluetooth() {
     _connectionSub = _bt.connectionStream.listen(_handleConnectionChange);
     _errorSub = _bt.errorStream.listen(_setError);
   }
@@ -38,29 +39,53 @@ class AppState extends ChangeNotifier {
   List<BleDevice> get pairedDevices => List.unmodifiable(_knownDevices);
   List<BleDevice> get discoveredDevices => List.unmodifiable(_nearbyDevices);
 
+  Future<bool> hasRequiredPermissions() async {
+    final platform = defaultTargetPlatform;
+
+    if (kIsWeb ||
+        platform == TargetPlatform.iOS ||
+        platform == TargetPlatform.macOS) {
+      return true;
+    }
+
+    if (platform != TargetPlatform.android) return true;
+
+    final statuses = await Future.wait([
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+    ].map((permission) => permission.status));
+
+    return statuses.every(_permissionReady);
+  }
+
   Future<bool> requestPermissions() async {
     errorMessage = null;
 
     final platform = defaultTargetPlatform;
 
-    if (kIsWeb || platform == TargetPlatform.iOS || platform == TargetPlatform.macOS) {
+    if (kIsWeb ||
+        platform == TargetPlatform.iOS ||
+        platform == TargetPlatform.macOS) {
       _safeNotify();
       return true;
     }
 
-    if (platform != TargetPlatform.android) {
-      _safeNotify();
-      return true;
-    }
+    final permissions = platform == TargetPlatform.android
+        ? [
+            Permission.bluetoothScan,
+            Permission.bluetoothConnect,
+            Permission.locationWhenInUse,
+          ]
+        : <Permission>[];
 
-    final statuses = await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
-    ].request();
+    if (permissions.isEmpty) return true;
+
+    final statuses = await permissions.request();
 
     final blocked = statuses.values.any(
-          (status) => status.isDenied || status.isPermanentlyDenied || status.isRestricted,
+      (status) =>
+          status.isDenied || status.isPermanentlyDenied || status.isRestricted,
     );
 
     if (!blocked) {
@@ -69,7 +94,7 @@ class AppState extends ChangeNotifier {
     }
 
     final permanentlyBlocked = statuses.values.any(
-          (status) => status.isPermanentlyDenied || status.isRestricted,
+      (status) => status.isPermanentlyDenied || status.isRestricted,
     );
 
     _setError(
@@ -79,6 +104,9 @@ class AppState extends ChangeNotifier {
     );
     return false;
   }
+
+  bool _permissionReady(PermissionStatus status) =>
+      status.isGranted || status.isLimited || status.isProvisional;
 
   Future<void> loadPairedDevices() async {
     if (!await requestPermissions()) return;
@@ -100,7 +128,8 @@ class AppState extends ChangeNotifier {
     _discoverySub = _bt.discoveryStream.listen(_upsertNearbyDevice);
     await _bt.startDiscovery();
     _scanTimer?.cancel();
-    _scanTimer = Timer(WheelchairBluetooth.scanDuration + const Duration(seconds: 1), () {
+    _scanTimer = Timer(
+        WheelchairBluetooth.scanDuration + const Duration(seconds: 1), () {
       if (isScanning) unawaited(stopScan());
     });
   }

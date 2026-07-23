@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../core/theme/app_colors.dart';
 
@@ -16,15 +17,15 @@ class JoystickWidget extends StatefulWidget {
 }
 
 class _JoystickWidgetState extends State<JoystickWidget> {
-  static const _radius = 110.0;
   Offset _offset = Offset.zero;
 
   void _move(Offset localPosition, Size size) {
+    final radius = _radiusFor(size);
     final center = Offset(size.width / 2, size.height / 2);
     var delta = localPosition - center;
-    if (delta.distance > _radius) delta = delta / delta.distance * _radius;
+    if (delta.distance > radius) delta = delta / delta.distance * radius;
     setState(() => _offset = delta);
-    widget.onMove(delta.dx / _radius, -delta.dy / _radius);
+    widget.onMove(delta.dx / radius, -delta.dy / radius);
   }
 
   void _release() {
@@ -48,6 +49,11 @@ class _JoystickWidgetState extends State<JoystickWidget> {
           );
         },
       );
+
+  double _radiusFor(Size size) => math.max(
+        64,
+        math.min(110, math.min(size.width, size.height) / 2 - 18),
+      );
 }
 
 class _JoystickPainter extends CustomPainter {
@@ -55,38 +61,51 @@ class _JoystickPainter extends CustomPainter {
 
   const _JoystickPainter(this.offset);
 
-  static const _trackRadius = 110.0;
-  static const _knobRadius = 44.0;
-
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final knob = center + offset;
+    final trackRadius = math.max(
+        64.0, math.min(110.0, math.min(size.width, size.height) / 2 - 18));
+    final knobRadius = math.max(28.0, math.min(44.0, trackRadius * 0.38));
+    final safeOffset = offset.distance > trackRadius
+        ? offset / offset.distance * trackRadius
+        : offset;
+    final knob = center + safeOffset;
     final trackPaint = Paint()..color = AppColors.background;
     final borderPaint = Paint()
-      ..color = AppColors.accent.withOpacity(0.22)
+      ..color = AppColors.accent.withValues(alpha: 0.22)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
     final crossPaint = Paint()
-      ..color = AppColors.accent.withOpacity(0.12)
+      ..color = AppColors.accent.withValues(alpha: 0.12)
       ..strokeWidth = 1;
 
-    canvas.drawCircle(center, _trackRadius, trackPaint);
-    canvas.drawCircle(center, _trackRadius, borderPaint);
-    canvas.drawCircle(center, _trackRadius * 0.63, borderPaint..color = AppColors.accent.withOpacity(0.12));
-    canvas.drawLine(center + const Offset(-98, 0), center + const Offset(98, 0), crossPaint);
-    canvas.drawLine(center + const Offset(0, -98), center + const Offset(0, 98), crossPaint);
+    canvas.drawCircle(center, trackRadius, trackPaint);
+    canvas.drawCircle(center, trackRadius, borderPaint);
+    canvas.drawCircle(center, trackRadius * 0.63,
+        borderPaint..color = AppColors.accent.withValues(alpha: 0.12));
+    canvas.drawLine(center + Offset(-trackRadius * 0.82, 0),
+        center + Offset(trackRadius * 0.82, 0), crossPaint);
+    canvas.drawLine(center + Offset(0, -trackRadius * 0.82),
+        center + Offset(0, trackRadius * 0.82), crossPaint);
 
     for (final arrow in _Arrow.values) {
-      _drawArrow(canvas, arrow.tip(center, _trackRadius), arrow);
+      _drawArrow(canvas, arrow.tip(center, trackRadius), arrow);
     }
 
-    canvas.drawCircle(knob + const Offset(0, 8), _knobRadius, Paint()..color = Colors.black.withOpacity(0.28));
-    canvas.drawCircle(knob, _knobRadius, Paint()..color = AppColors.accent);
-    canvas.drawCircle(knob, _knobRadius * 0.55, Paint()..color = AppColors.accentDeep.withOpacity(0.35));
+    canvas.drawCircle(knob + const Offset(0, 8), knobRadius,
+        Paint()..color = Colors.black.withValues(alpha: 0.28));
+    canvas.drawCircle(knob, knobRadius, Paint()..color = AppColors.accent);
+    canvas.drawCircle(knob, knobRadius * 0.55,
+        Paint()..color = AppColors.accentDeep.withValues(alpha: 0.35));
     canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromCenter(center: knob, width: 44, height: 10), const Radius.circular(8)),
-      Paint()..color = Colors.white.withOpacity(0.34),
+      RRect.fromRectAndRadius(
+          Rect.fromCenter(
+              center: knob,
+              width: knobRadius,
+              height: math.max(7, knobRadius * 0.22)),
+          const Radius.circular(8)),
+      Paint()..color = Colors.white.withValues(alpha: 0.34),
     );
   }
 
@@ -115,11 +134,13 @@ class _JoystickPainter extends CustomPainter {
           ..lineTo(tip.dx - size, tip.dy - size)
           ..lineTo(tip.dx - size, tip.dy + size);
     }
-    canvas.drawPath(path..close(), Paint()..color = AppColors.accent.withOpacity(0.82));
+    canvas.drawPath(path..close(),
+        Paint()..color = AppColors.accent.withValues(alpha: 0.82));
   }
 
   @override
-  bool shouldRepaint(_JoystickPainter oldDelegate) => oldDelegate.offset != offset;
+  bool shouldRepaint(_JoystickPainter oldDelegate) =>
+      oldDelegate.offset != offset;
 }
 
 enum _Arrow {

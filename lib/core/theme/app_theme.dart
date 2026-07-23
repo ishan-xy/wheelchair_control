@@ -22,13 +22,13 @@ class AppTheme {
         surface: AppColors.surface,
       ),
       textTheme: AppTypography.textTheme,
-      splashColor: AppColors.accent.withOpacity(0.08),
-      highlightColor: Colors.white.withOpacity(0.03),
+      splashColor: AppColors.accent.withValues(alpha: 0.08),
+      highlightColor: Colors.white.withValues(alpha: 0.03),
       sliderTheme: SliderThemeData(
         activeTrackColor: AppColors.accent,
-        inactiveTrackColor: Colors.white.withOpacity(0.18),
+        inactiveTrackColor: Colors.white.withValues(alpha: 0.18),
         thumbColor: AppColors.accent,
-        overlayColor: AppColors.accent.withOpacity(0.12),
+        overlayColor: AppColors.accent.withValues(alpha: 0.12),
         trackHeight: 6,
       ),
     );

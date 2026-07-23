@@ -53,7 +53,7 @@ class ActionTile extends StatelessWidget {
                       Text(
                         subtitle!,
                         style: TextStyle(
-                          color: foreground.withOpacity(0.7),
+                          color: foreground.withValues(alpha: 0.7),
                           fontSize: 13,
                         ),
                       ),

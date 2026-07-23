@@ -19,14 +19,16 @@ class PrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) => DecoratedBox(
         decoration: BoxDecoration(
           gradient: danger ? null : AppColors.primaryGradient,
-          color: danger ? AppColors.danger.withOpacity(0.18) : null,
+          color: danger ? AppColors.danger.withValues(alpha: 0.18) : null,
           borderRadius: BorderRadius.circular(28),
-          border: danger ? Border.all(color: AppColors.danger.withOpacity(0.65)) : null,
+          border: danger
+              ? Border.all(color: AppColors.danger.withValues(alpha: 0.65))
+              : null,
           boxShadow: danger
               ? null
               : [
                   BoxShadow(
-                    color: AppColors.accent.withOpacity(0.16),
+                    color: AppColors.accent.withValues(alpha: 0.16),
                     blurRadius: 22,
                     offset: const Offset(0, 10),
                   ),
@@ -37,16 +39,18 @@ class PrimaryButton extends StatelessWidget {
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(58),
             backgroundColor: Colors.transparent,
-            disabledBackgroundColor: Colors.white.withOpacity(0.08),
+            disabledBackgroundColor: Colors.white.withValues(alpha: 0.08),
             shadowColor: Colors.transparent,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
               if (icon != null) ...[
-                Icon(icon, color: danger ? AppColors.danger : Colors.black, size: 22),
+                Icon(icon,
+                    color: danger ? AppColors.danger : Colors.black, size: 22),
                 const SizedBox(width: 12),
               ],
               Text(

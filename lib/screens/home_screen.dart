@@ -17,7 +17,7 @@ class HomeScreen extends StatelessWidget {
     final battery = state.isConnected && state.battery > 0 ? state.battery : 84;
 
     return Container(
-      decoration: const BoxDecoration(gradient: AppColors.appBackground),
+      decoration: BoxDecoration(gradient: AppColors.appBackground),
       child: SafeArea(
         bottom: false,
         child: SingleChildScrollView(
@@ -29,7 +29,8 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 24),
               _VehicleHero(connected: state.isConnected, battery: battery),
               const SizedBox(height: 22),
-              _QuickActions(onControl: () => MainNavState.of(context)?.setIndex(1)),
+              _QuickActions(
+                  onControl: () => MainNavState.of(context)?.setIndex(1)),
               const SizedBox(height: 22),
               _BatteryCard(percent: battery),
               const SizedBox(height: 22),
@@ -57,15 +58,20 @@ class _HomeHeader extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Good morning', style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
+                    const Text('Good morning',
+                        style: TextStyle(
+                            color: AppColors.textMuted, fontSize: 16)),
                     const SizedBox(height: 8),
-                    Text('Alex', style: Theme.of(context).textTheme.headlineMedium),
+                    Text('Alex',
+                        style: Theme.of(context).textTheme.headlineMedium),
                   ],
                 ),
               ),
               _CircleIcon(icon: Icons.notifications_none_rounded, onTap: () {}),
               const SizedBox(width: 12),
-              _CircleIcon(icon: Icons.tune_rounded, onTap: () => MainNavState.of(context)?.setIndex(3)),
+              _CircleIcon(
+                  icon: Icons.tune_rounded,
+                  onTap: () => MainNavState.of(context)?.setIndex(3)),
             ],
           ),
           const SizedBox(height: 26),
@@ -73,7 +79,8 @@ class _HomeHeader extends StatelessWidget {
             duration: const Duration(milliseconds: 240),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
-              color: (connected ? AppColors.success : AppColors.textMuted).withOpacity(0.14),
+              color: (connected ? AppColors.success : AppColors.textMuted)
+                  .withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(28),
             ),
             child: Row(
@@ -147,24 +154,45 @@ class _VehicleHero extends StatelessWidget {
                     children: [
                       Text('YOUR VAYA', style: AppTypography.overline),
                       SizedBox(height: 14),
-                      Text('VAYA One', style: TextStyle(color: AppColors.text, fontSize: 30, fontWeight: FontWeight.w800)),
+                      Text('VAYA One',
+                          style: TextStyle(
+                              color: AppColors.text,
+                              fontSize: 30,
+                              fontWeight: FontWeight.w800)),
                       SizedBox(height: 6),
-                      Text('Titanium · 2026', style: TextStyle(color: AppColors.textMuted, fontSize: 17)),
+                      Text('Titanium · 2026',
+                          style: TextStyle(
+                              color: AppColors.textMuted, fontSize: 17)),
                     ],
                   ),
                 ),
                 _StatusPill(label: connected ? 'Ready' : 'Idle'),
               ],
             ),
-            Center(child: AnimatedVehicle(size: MediaQuery.sizeOf(context).width * 0.64, compact: true)),
+            Center(
+                child: AnimatedVehicle(
+                    size: MediaQuery.sizeOf(context).width * 0.64,
+                    compact: true)),
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: _MetricPill(icon: Icons.battery_5_bar_rounded, label: 'BATTERY', value: '$battery%')),
+                Expanded(
+                    child: _MetricPill(
+                        icon: Icons.battery_5_bar_rounded,
+                        label: 'BATTERY',
+                        value: '$battery%')),
                 const SizedBox(width: 10),
-                const Expanded(child: _MetricPill(icon: Icons.location_on_outlined, label: 'RANGE', value: '24 km')),
+                const Expanded(
+                    child: _MetricPill(
+                        icon: Icons.location_on_outlined,
+                        label: 'RANGE',
+                        value: '24 km')),
                 const SizedBox(width: 10),
-                const Expanded(child: _MetricPill(icon: Icons.schedule_rounded, label: 'TIME', value: '5h 20m')),
+                const Expanded(
+                    child: _MetricPill(
+                        icon: Icons.schedule_rounded,
+                        label: 'TIME',
+                        value: '5h 20m')),
               ],
             ),
           ],
@@ -181,10 +209,12 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         decoration: BoxDecoration(
-          color: AppColors.accent.withOpacity(0.14),
+          color: AppColors.accent.withValues(alpha: 0.14),
           borderRadius: BorderRadius.circular(22),
         ),
-        child: Text(label, style: const TextStyle(color: AppColors.accent, fontWeight: FontWeight.w800)),
+        child: Text(label,
+            style: const TextStyle(
+                color: AppColors.accent, fontWeight: FontWeight.w800)),
       );
 }
 
@@ -193,13 +223,14 @@ class _MetricPill extends StatelessWidget {
   final String label;
   final String value;
 
-  const _MetricPill({required this.icon, required this.label, required this.value});
+  const _MetricPill(
+      {required this.icon, required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.035),
+          color: Colors.white.withValues(alpha: 0.035),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: AppColors.border),
         ),
@@ -211,7 +242,11 @@ class _MetricPill extends StatelessWidget {
                 Icon(icon, color: AppColors.textMuted, size: 15),
                 const SizedBox(width: 4),
                 Flexible(
-                  child: Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w700)),
+                  child: Text(label,
+                      style: const TextStyle(
+                          color: AppColors.textMuted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700)),
                 ),
               ],
             ),
@@ -219,7 +254,11 @@ class _MetricPill extends StatelessWidget {
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Text(value, style: const TextStyle(color: AppColors.text, fontSize: 24, fontWeight: FontWeight.w800)),
+              child: Text(value,
+                  style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800)),
             ),
           ],
         ),
@@ -234,13 +273,28 @@ class _QuickActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
         children: [
-          Expanded(child: _ActionButton(icon: Icons.bolt_rounded, label: 'Drive', onTap: onControl)),
+          Expanded(
+              child: _ActionButton(
+                  icon: Icons.bolt_rounded, label: 'Drive', onTap: onControl)),
           const SizedBox(width: 12),
-          Expanded(child: _ActionButton(icon: Icons.battery_5_bar_rounded, label: 'Battery', onTap: () {})),
+          Expanded(
+              child: _ActionButton(
+                  icon: Icons.battery_5_bar_rounded,
+                  label: 'Battery',
+                  onTap: () {})),
           const SizedBox(width: 12),
-          Expanded(child: _ActionButton(icon: Icons.monitor_heart_outlined, label: 'Comfort', onTap: () {})),
+          Expanded(
+              child: _ActionButton(
+                  icon: Icons.monitor_heart_outlined,
+                  label: 'Comfort',
+                  onTap: () {})),
           const SizedBox(width: 12),
-          Expanded(child: _ActionButton(icon: Icons.shield_outlined, label: 'SOS', danger: true, onTap: () {})),
+          Expanded(
+              child: _ActionButton(
+                  icon: Icons.shield_outlined,
+                  label: 'SOS',
+                  danger: true,
+                  onTap: () {})),
         ],
       );
 }
@@ -251,7 +305,11 @@ class _ActionButton extends StatelessWidget {
   final bool danger;
   final VoidCallback onTap;
 
-  const _ActionButton({required this.icon, required this.label, required this.onTap, this.danger = false});
+  const _ActionButton(
+      {required this.icon,
+      required this.label,
+      required this.onTap,
+      this.danger = false});
 
   @override
   Widget build(BuildContext context) {
@@ -265,11 +323,15 @@ class _ActionButton extends StatelessWidget {
           Container(
             width: 44,
             height: 44,
-            decoration: BoxDecoration(color: color.withOpacity(0.17), shape: BoxShape.circle),
+            decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.17), shape: BoxShape.circle),
             child: Icon(icon, color: color, size: 26),
           ),
           const SizedBox(height: 12),
-          FittedBox(child: Text(label, style: const TextStyle(color: AppColors.text, fontWeight: FontWeight.w800))),
+          FittedBox(
+              child: Text(label,
+                  style: const TextStyle(
+                      color: AppColors.text, fontWeight: FontWeight.w800))),
         ],
       ),
     );
@@ -288,32 +350,54 @@ class _BatteryCard extends StatelessWidget {
           children: [
             const Row(
               children: [
-                Icon(Icons.battery_5_bar_rounded, color: AppColors.accent, size: 20),
+                Icon(Icons.battery_5_bar_rounded,
+                    color: AppColors.accent, size: 20),
                 SizedBox(width: 10),
-                Text('Battery', style: TextStyle(color: AppColors.text, fontSize: 20, fontWeight: FontWeight.w800)),
+                Text('Battery',
+                    style: TextStyle(
+                        color: AppColors.text,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800)),
                 Spacer(),
-                Text('Charging capable', style: TextStyle(color: AppColors.textMuted)),
+                Text('Charging capable',
+                    style: TextStyle(color: AppColors.textMuted)),
               ],
             ),
             const SizedBox(height: 28),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('$percent', style: const TextStyle(color: AppColors.text, fontSize: 56, fontWeight: FontWeight.w800, height: 0.9)),
-                const Text('%', style: TextStyle(color: AppColors.textMuted, fontSize: 24, fontWeight: FontWeight.w800)),
+                Text('$percent',
+                    style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 56,
+                        fontWeight: FontWeight.w800,
+                        height: 0.9)),
+                const Text('%',
+                    style: TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800)),
                 const Spacer(),
                 const Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('Health', style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
+                    Text('Health',
+                        style: TextStyle(
+                            color: AppColors.textMuted, fontSize: 16)),
                     SizedBox(height: 4),
-                    Text('Excellent', style: TextStyle(color: AppColors.success, fontSize: 17, fontWeight: FontWeight.w800)),
+                    Text('Excellent',
+                        style: TextStyle(
+                            color: AppColors.success,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800)),
                   ],
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            const Text('Estimated 24 km remaining', style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
+            const Text('Estimated 24 km remaining',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
             const SizedBox(height: 24),
             BatteryIndicator(percent: percent),
           ],
@@ -331,19 +415,27 @@ class _ActivityCard extends StatelessWidget {
           children: [
             const Row(
               children: [
-                Text("Today's activity", style: TextStyle(color: AppColors.text, fontSize: 20, fontWeight: FontWeight.w800)),
+                Text("Today's activity",
+                    style: TextStyle(
+                        color: AppColors.text,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800)),
                 Spacer(),
-                Text('View all', style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w800)),
+                Text('View all',
+                    style: TextStyle(
+                        color: AppColors.accent, fontWeight: FontWeight.w800)),
               ],
             ),
             const SizedBox(height: 24),
             Row(
               children: const [
-                Expanded(child: _ActivityMetric(value: '6.2km', label: 'DISTANCE')),
+                Expanded(
+                    child: _ActivityMetric(value: '6.2km', label: 'DISTANCE')),
                 SizedBox(width: 10),
                 Expanded(child: _ActivityMetric(value: '3', label: 'RIDES')),
                 SizedBox(width: 10),
-                Expanded(child: _ActivityMetric(value: '1h 48m', label: 'ACTIVE')),
+                Expanded(
+                    child: _ActivityMetric(value: '1h 48m', label: 'ACTIVE')),
               ],
             ),
           ],
@@ -361,14 +453,23 @@ class _ActivityMetric extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.04),
+          color: Colors.white.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(24),
         ),
         child: Column(
           children: [
-            FittedBox(child: Text(value, style: const TextStyle(color: AppColors.text, fontSize: 25, fontWeight: FontWeight.w800))),
+            FittedBox(
+                child: Text(value,
+                    style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 25,
+                        fontWeight: FontWeight.w800))),
             const SizedBox(height: 8),
-            Text(label, style: const TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.w700)),
+            Text(label,
+                style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
           ],
         ),
       );
