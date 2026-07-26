@@ -3,23 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../core/theme/app_colors.dart';
-import '../core/theme/typography.dart';
-import '../core/widgets/glass_card.dart';
-import '../core/widgets/primary_button.dart';
+import '../core/widgets/battery_indicator.dart';
+import '../models/wheelchair_runtime.dart';
 import '../providers/app_state.dart';
-import '../services/wheelchair_commands.dart';
 import '../widgets/joystick_widget.dart';
 
 enum DriveMode {
-  indoor('Indoor', 'Slow, precise', Icons.home_outlined, 90),
-  outdoor('Outdoor', 'Balanced power', Icons.tune_rounded, 160);
+  indoor('Indoor'),
+  outdoor('Outdoor');
 
   final String label;
-  final String subtitle;
-  final IconData icon;
-  final int maxPwm;
 
-  const DriveMode(this.label, this.subtitle, this.icon, this.maxPwm);
+  const DriveMode(this.label);
 }
 
 class ControlScreen extends StatefulWidget {
@@ -29,251 +24,413 @@ class ControlScreen extends StatefulWidget {
   State<ControlScreen> createState() => _ControlScreenState();
 }
 
-class _ControlScreenState extends State<ControlScreen> {
-  DriveMode _mode = DriveMode.outdoor;
+class _ControlScreenState extends State<ControlScreen>
+    with WidgetsBindingObserver {
+  DriveMode _mode = DriveMode.indoor;
   Timer? _sendTimer;
   double _rawX = 0;
   double _rawY = 0;
-
-  double get _x => (_rawX * context.read<AppState>().sensitivity)
-      .clamp(-1.0, 1.0)
-      .toDouble();
-  double get _y => (_rawY * context.read<AppState>().sensitivity)
-      .clamp(-1.0, 1.0)
-      .toDouble();
+  bool _stopping = false;
+  bool _orientationConfigured = false;
 
   @override
   void initState() {
     super.initState();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_orientationConfigured) return;
+    _orientationConfigured = true;
+    final isPhone = MediaQuery.sizeOf(context).shortestSide < 600;
+    unawaited(
+      SystemChrome.setPreferredOrientations(
+        isPhone ? [DeviceOrientation.portraitUp] : DeviceOrientation.values,
+      ),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _stop(silent: true);
   }
 
   @override
   void dispose() {
     _sendTimer?.cancel();
-    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(SystemChrome.setPreferredOrientations(DeviceOrientation.values));
     super.dispose();
   }
 
   void _onMove(double x, double y) {
-    setState(() {
-      _rawX = x;
-      _rawY = y;
-    });
+    final state = context.read<AppState>();
+    if (!state.canDrive) return;
+    _rawX = x;
+    _rawY = y;
     _sendTimer ??= Timer.periodic(const Duration(milliseconds: 50), (_) {
-      unawaited(context
-          .read<AppState>()
-          .sendCommand(WheelchairCommands.joystick(_x, _y)));
+      if (!state.canDrive) {
+        _stop(silent: true);
+        return;
+      }
+      final sensitivity = state.sensitivity;
+      final commandX = (_rawX * sensitivity).clamp(-1.0, 1.0);
+      final commandY = (_rawY * sensitivity).clamp(-1.0, 1.0);
+      unawaited(state.sendMovement(commandX, commandY));
     });
   }
 
-  void _stop() {
+  Future<void> _stop({bool silent = false}) async {
     _sendTimer?.cancel();
     _sendTimer = null;
-    setState(() {
-      _rawX = 0;
-      _rawY = 0;
-    });
-    unawaited(context
-        .read<AppState>()
-        .sendCommand(WheelchairCommands.stop, reliable: true));
+    _rawX = 0;
+    _rawY = 0;
+    if (_stopping) return;
+    final state = context.read<AppState>();
+    if (!state.isConnected) return;
+    _stopping = true;
+    bool delivered;
+    try {
+      delivered = await state.stopWheelchair();
+    } finally {
+      _stopping = false;
+    }
+    if (!mounted || silent) return;
+    final confirmed = state.motionStatus == WheelchairMotionStatus.stopped;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          confirmed
+              ? 'Wheelchair reports stopped.'
+              : delivered
+                  ? 'Stop command sent. Confirm the wheelchair has stopped.'
+                  : 'Stop command could not be delivered. Use the physical stop.',
+        ),
+        backgroundColor: delivered ? AppColors.surfaceHigh : AppColors.danger,
+      ),
+    );
   }
 
-  void _selectMode(DriveMode mode) {
-    setState(() => _mode = mode);
-    unawaited(context
-        .read<AppState>()
-        .sendCommand(WheelchairCommands.maxPwm(mode.maxPwm), reliable: true));
+  Future<void> _emergencyStop() async {
+    final state = context.read<AppState>();
+    final confirmed = await state.emergencyStop();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          confirmed
+              ? 'Emergency stop confirmed by the wheelchair.'
+              : 'Emergency stop was not confirmed. Use the physical stop now.',
+        ),
+        backgroundColor: confirmed ? AppColors.surfaceHigh : AppColors.danger,
+      ),
+    );
+  }
+
+  Future<void> _selectMode(DriveMode mode) async {
+    final state = context.read<AppState>();
+    if (!state.canDrive) return;
+    final confirmed =
+        await state.setDriveMode(indoor: mode == DriveMode.indoor);
+    if (!mounted) return;
+    if (confirmed) {
+      setState(() => _mode = mode);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('The wheelchair did not confirm the mode.')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-
-    return Container(
-      decoration: BoxDecoration(gradient: AppColors.appBackground),
-      child: SafeArea(
-        bottom: false,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = constraints.maxHeight < 720;
-            return Padding(
-              padding: EdgeInsets.fromLTRB(18, compact ? 22 : 34, 18, 96),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
+    return SafeArea(
+      bottom: false,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxHeight < 640;
+              final textScale = MediaQuery.textScalerOf(context).scale(1);
+              final accessibleCompact = textScale > 1.25;
+              final narrow = constraints.maxWidth < 360 || accessibleCompact;
+              return Padding(
+                // Matches the Status and Settings screen heading grid while
+                // retaining compact vertical space for the fixed control UI.
+                padding: EdgeInsets.fromLTRB(20, compact ? 10 : 20, 20, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _ControlHeader(state: state, compact: compact),
+                    SizedBox(height: compact ? 8 : 12),
+                    if (!state.canDrive) ...[
+                      _SafetyWarning(
+                        state: state,
+                        short: accessibleCompact,
+                      ),
+                      SizedBox(height: compact ? 8 : 12),
+                    ],
+                    SegmentedButton<DriveMode>(
+                      segments: [
+                        for (final mode in DriveMode.values)
+                          ButtonSegment(
+                            value: mode,
+                            label: Text(mode.label),
+                            icon: narrow
+                                ? null
+                                : Icon(
+                                    mode == DriveMode.indoor
+                                        ? Icons.home_outlined
+                                        : Icons.park_outlined,
+                                  ),
+                          ),
+                      ],
+                      selected: {_mode},
+                      onSelectionChanged: state.canDrive
+                          ? (selection) =>
+                              unawaited(_selectMode(selection.first))
+                          : null,
+                      showSelectedIcon: false,
+                    ),
+                    SizedBox(height: compact ? 8 : 12),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        padding: EdgeInsets.fromLTRB(
+                          12,
+                          compact ? 8 : 12,
+                          12,
+                          compact ? 6 : 10,
+                        ),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('CONTROL',
-                                style: AppTypography.overline),
-                            const SizedBox(height: 6),
-                            Text('Drive VAYA',
-                                style: compact
-                                    ? Theme.of(context).textTheme.headlineMedium
-                                    : Theme.of(context)
-                                        .textTheme
-                                        .headlineLarge),
+                            Row(
+                              children: [
+                                if (!accessibleCompact)
+                                  Expanded(
+                                    child: Text(
+                                      state.canDrive
+                                          ? 'Hold and move to drive'
+                                          : state.isConnected
+                                              ? 'Movement controls are unavailable'
+                                              : 'Connect to enable movement',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: AppColors.textMuted,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  const Spacer(),
+                                SizedBox(width: accessibleCompact ? 0 : 8),
+                                BatteryIndicator(
+                                  percent: state.batteryStatus ==
+                                          TelemetryStatus.unavailable
+                                      ? null
+                                      : state.battery,
+                                  delayed: state.batteryStatus ==
+                                      TelemetryStatus.stale,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Expanded(
+                              child: JoystickWidget(
+                                enabled: state.canDrive,
+                                onMove: _onMove,
+                                onRelease: () => _stop(silent: true),
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    'Joystick sensitivity',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${(state.sensitivity * 100).round()}%',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Slider(
+                              value: state.sensitivity,
+                              min: 0.1,
+                              max: 1,
+                              divisions: 9,
+                              label:
+                                  '${(state.sensitivity * 100).round()} percent',
+                              onChanged:
+                                  state.canDrive ? state.setSensitivity : null,
+                            ),
                           ],
                         ),
                       ),
-                      _StatusPill(text: state.isConnected ? 'Ready' : 'Idle'),
-                    ],
-                  ),
-                  SizedBox(height: compact ? 14 : 20),
-                  Row(
-                    children: [
-                      for (final mode in DriveMode.values) ...[
-                        Expanded(
-                            child: _ModeCard(
-                                compact: compact,
-                                mode: mode,
-                                selected: _mode == mode,
-                                onTap: () => _selectMode(mode))),
-                        if (mode != DriveMode.values.last)
-                          const SizedBox(width: 10),
-                      ],
-                    ],
-                  ),
-                  SizedBox(height: compact ? 12 : 18),
-                  Expanded(
-                    child: GlassCard(
-                      padding: EdgeInsets.fromLTRB(
-                          16, compact ? 14 : 18, 16, compact ? 12 : 16),
-                      child: Column(
-                        children: [
-                          const Text('JOYSTICK', style: AppTypography.overline),
-                          SizedBox(height: compact ? 6 : 12),
-                          Expanded(
-                            child: JoystickWidget(
-                                onMove: _onMove, onRelease: _stop),
+                    ),
+                    SizedBox(height: compact ? 8 : 12),
+                    SizedBox(
+                      height: compact ? 54 : 62,
+                      child: FilledButton.icon(
+                        onPressed: state.isConnected && state.protocolReady
+                            ? _emergencyStop
+                            : null,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.danger,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: AppColors.surfaceHigh,
+                          disabledForegroundColor: AppColors.textDim,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                          Row(
-                            children: [
-                              const Text('Speed',
-                                  style: TextStyle(
-                                      color: AppColors.textMuted,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w800)),
-                              const Spacer(),
-                              Text('${(state.sensitivity * 100).round()}%',
-                                  style: const TextStyle(
-                                      color: AppColors.text,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w800)),
-                            ],
+                        ),
+                        icon: const Icon(Icons.stop_circle_outlined),
+                        label: const Text(
+                          'EMERGENCY STOP',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
                           ),
-                          Slider(
-                            value: state.sensitivity,
-                            min: 0.1,
-                            max: 1.0,
-                            divisions: 9,
-                            onChanged: state.setSensitivity,
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                  SizedBox(height: compact ? 10 : 14),
-                  PrimaryButton(
-                      label: 'Emergency Stop',
-                      icon: Icons.error_outline_rounded,
-                      danger: true,
-                      onPressed: _stop),
-                ],
-              ),
-            );
-          },
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
   }
 }
 
-class _StatusPill extends StatelessWidget {
-  final String text;
+class _ControlHeader extends StatelessWidget {
+  final AppState state;
+  final bool compact;
 
-  const _StatusPill({required this.text});
+  const _ControlHeader({required this.state, required this.compact});
+
+  @override
+  Widget build(BuildContext context) {
+    final connected = state.isConnected;
+    final statusColor = connected ? AppColors.success : AppColors.warning;
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final stackStatus = compact || textScale > 1.25;
+    final title = Text(
+      stackStatus ? 'Control' : 'Wheelchair control',
+      style: stackStatus
+          ? Theme.of(context).textTheme.titleLarge
+          : Theme.of(context).textTheme.headlineMedium,
+    );
+    final motion = Text(
+      state.motionStatus.label,
+      style: TextStyle(color: statusColor, fontWeight: FontWeight.w700),
+    );
+    final connection = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          connected ? Icons.link_rounded : Icons.link_off_rounded,
+          size: 18,
+          color: statusColor,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          state.connectionStatus.label,
+          style: TextStyle(color: statusColor, fontWeight: FontWeight.w800),
+        ),
+      ],
+    );
+    if (stackStatus) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          title,
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(child: motion),
+              const SizedBox(width: 8),
+              connection,
+            ],
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              title,
+              const SizedBox(height: 4),
+              motion,
+            ],
+          ),
+        ),
+        connection,
+      ],
+    );
+  }
+}
+
+class _SafetyWarning extends StatelessWidget {
+  final AppState state;
+  final bool short;
+
+  const _SafetyWarning({required this.state, this.short = false});
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.accent.withValues(alpha: 0.13),
-          borderRadius: BorderRadius.circular(24),
+          color: AppColors.warning.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.warning.withValues(alpha: 0.5)),
         ),
-        child: Text(text,
-            style: const TextStyle(
-                color: AppColors.accent, fontWeight: FontWeight.w800)),
-      );
-}
-
-class _ModeCard extends StatelessWidget {
-  final DriveMode mode;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool compact;
-
-  const _ModeCard(
-      {required this.mode,
-      required this.selected,
-      required this.onTap,
-      this.compact = false});
-
-  @override
-  Widget build(BuildContext context) => AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        decoration: BoxDecoration(
-          gradient: selected ? AppColors.primaryGradient : null,
-          color: selected ? null : AppColors.glassSoft,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-              color: selected ? Colors.transparent : AppColors.border),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(28),
-          onTap: onTap,
-          child: Padding(
-            padding: EdgeInsets.all(compact ? 12 : 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(mode.icon,
-                    color: selected ? Colors.black : AppColors.text,
-                    size: compact ? 22 : 26),
-                SizedBox(height: compact ? 10 : 14),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    mode.label,
-                    style: TextStyle(
-                      color: selected ? Colors.black : AppColors.text,
-                      fontSize: compact ? 17 : 19,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    mode.subtitle,
-                    style: TextStyle(
-                        color: selected
-                            ? Colors.black.withValues(alpha: 0.76)
-                            : AppColors.textMuted,
-                        fontSize: compact ? 12 : 14),
-                  ),
-                ),
-              ],
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                state.emergencyStopActive
+                    ? 'Emergency stop is active. Use the physical reset procedure.'
+                    : state.isLocked
+                        ? short
+                            ? 'Wheelchair is locked.'
+                            : 'Wheelchair is locked. Use Status to unlock it when it is safe to drive.'
+                        : state.faultCode == 'COMMAND_TIMEOUT'
+                            ? 'Control signal was interrupted. Release the joystick while control is restored.'
+                            : state.faultCode != 'NONE'
+                                ? 'Wheelchair fault: movement is locked.'
+                                : short
+                                    ? 'Movement is locked.'
+                                    : 'Movement controls are locked until the safety connection is ready.',
+              ),
             ),
-          ),
+          ],
         ),
       );
 }

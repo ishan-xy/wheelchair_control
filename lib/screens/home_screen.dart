@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../app/main_nav.dart';
 import '../core/theme/app_colors.dart';
-import '../core/theme/typography.dart';
-import '../core/widgets/animated_vehicle.dart';
-import '../core/widgets/battery_indicator.dart';
-import '../core/widgets/glass_card.dart';
+import '../models/wheelchair_runtime.dart';
 import '../providers/app_state.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -14,27 +10,69 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final battery = state.isConnected && state.battery > 0 ? state.battery : 84;
-
-    return Container(
-      decoration: BoxDecoration(gradient: AppColors.appBackground),
-      child: SafeArea(
-        bottom: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(22, 24, 22, 118),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return SafeArea(
+      bottom: false,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
             children: [
-              _HomeHeader(connected: state.isConnected),
-              const SizedBox(height: 24),
-              _VehicleHero(connected: state.isConnected, battery: battery),
-              const SizedBox(height: 22),
-              _QuickActions(
-                  onControl: () => MainNavState.of(context)?.setIndex(1)),
-              const SizedBox(height: 22),
-              _BatteryCard(percent: battery),
-              const SizedBox(height: 22),
-              const _ActivityCard(),
+              Text(
+                'Wheelchair status',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Live information from VAYA One',
+                style: TextStyle(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 20),
+              _ConnectionPanel(state: state),
+              const SizedBox(height: 12),
+              _WheelchairLockPanel(state: state),
+              if (state.errorMessage != null) ...[
+                const SizedBox(height: 12),
+                _WarningPanel(message: state.errorMessage!),
+              ],
+              const SizedBox(height: 20),
+              Text(
+                'Current state',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              _StatusRow(
+                label: 'Movement',
+                value: state.motionStatus.label,
+                icon: state.motionStatus == WheelchairMotionStatus.moving
+                    ? Icons.directions_rounded
+                    : Icons.stop_circle_outlined,
+                emphasized: state.motionStatus == WheelchairMotionStatus.moving,
+              ),
+              const SizedBox(height: 10),
+              _TelemetryRow(
+                label: 'Battery',
+                icon: Icons.battery_5_bar_rounded,
+                value: state.batteryStatus == TelemetryStatus.current
+                    ? '${state.battery}%'
+                    : state.batteryStatus == TelemetryStatus.stale
+                        ? '${state.battery}% · delayed'
+                        : 'Information unavailable',
+                status: state.batteryStatus,
+              ),
+              const SizedBox(height: 10),
+              _TelemetryRow(
+                label: 'Controller speed',
+                icon: Icons.speed_rounded,
+                value: state.speedStatus == TelemetryStatus.current
+                    ? '${state.currentSpeed}'
+                    : state.speedStatus == TelemetryStatus.stale
+                        ? '${state.currentSpeed} · delayed'
+                        : 'Information unavailable',
+                status: state.speedStatus,
+              ),
+              const SizedBox(height: 20),
+              const _SafetyNotice(),
             ],
           ),
         ),
@@ -43,434 +81,305 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class _HomeHeader extends StatelessWidget {
-  final bool connected;
+class _WheelchairLockPanel extends StatelessWidget {
+  const _WheelchairLockPanel({required this.state});
 
-  const _HomeHeader({required this.connected});
+  final AppState state;
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) {
+    final locked = state.isLocked;
+    final restConfirmed = state.isWheelchairAtRest;
+    final statusColor = locked ? AppColors.warning : AppColors.success;
+    final action = locked ? 'Unlock wheelchair' : 'Lock wheelchair';
+    final explanation = locked
+        ? 'Movement controls remain disabled until you unlock the wheelchair.'
+        : 'Locking disables movement controls. The wheelchair must already be stopped.';
+    final unavailableReason = !state.isConnected
+        ? 'Connect to change the lock state.'
+        : !restConfirmed
+            ? 'Stop the wheelchair completely before changing the lock state.'
+            : null;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: statusColor.withValues(alpha: 0.65)),
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Good morning',
-                        style: TextStyle(
-                            color: AppColors.textMuted, fontSize: 16)),
-                    const SizedBox(height: 8),
-                    Text('Alex',
-                        style: Theme.of(context).textTheme.headlineMedium),
-                  ],
+              Icon(
+                locked ? Icons.lock_rounded : Icons.lock_open_rounded,
+                color: statusColor,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Wheelchair lock',
+                  style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
-              _CircleIcon(icon: Icons.notifications_none_rounded, onTap: () {}),
-              const SizedBox(width: 12),
-              _CircleIcon(
-                  icon: Icons.tune_rounded,
-                  onTap: () => MainNavState.of(context)?.setIndex(3)),
+              Text(
+                locked ? 'Locked' : 'Unlocked',
+                style:
+                    TextStyle(color: statusColor, fontWeight: FontWeight.w800),
+              ),
             ],
           ),
-          const SizedBox(height: 26),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 240),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: (connected ? AppColors.success : AppColors.textMuted)
-                  .withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(28),
+          const SizedBox(height: 10),
+          Text(explanation, style: const TextStyle(color: AppColors.textMuted)),
+          if (unavailableReason != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              unavailableReason,
+              style: const TextStyle(color: AppColors.warning),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          ],
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: state.canChangeWheelchairLock
+                  ? () => _changeLock(context, state, !locked)
+                  : null,
+              icon: state.isUpdatingWheelchairLock
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(locked ? Icons.lock_open_rounded : Icons.lock_rounded),
+              label: Text(action),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _changeLock(
+    BuildContext context,
+    AppState state,
+    bool lock,
+  ) async {
+    final changed = await state.setWheelchairLocked(lock);
+    if (!context.mounted) return;
+    final message = changed
+        ? lock
+            ? 'Wheelchair locked. Movement controls are disabled.'
+            : 'Wheelchair unlocked. Movement controls are available.'
+        : 'The wheelchair did not confirm the lock state. Keep it stopped and try again.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(
+            color: AppColors.text,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        backgroundColor: changed ? AppColors.surfaceHigh : AppColors.warning,
+      ),
+    );
+  }
+}
+
+class _ConnectionPanel extends StatelessWidget {
+  final AppState state;
+
+  const _ConnectionPanel({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final connected = state.isConnected;
+    final color = connected ? AppColors.success : AppColors.warning;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              connected ? Icons.link_rounded : Icons.link_off_rounded,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: connected ? AppColors.success : AppColors.textMuted,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 10),
                 Text(
-                  connected ? 'VAYA One · Connected' : 'VAYA One · Standby',
-                  style: TextStyle(
-                    color: connected ? AppColors.success : AppColors.textMuted,
+                  state.connectionStatus.label,
+                  style: const TextStyle(
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  connected
+                      ? (state.connectedDeviceName.isEmpty
+                          ? 'VAYA One'
+                          : state.connectedDeviceName)
+                      : state.isReconnecting
+                          ? 'Trying to restore communication'
+                          : 'Movement controls are unavailable',
+                  style: const TextStyle(color: AppColors.textMuted),
                 ),
               ],
             ),
           ),
         ],
-      );
+      ),
+    );
+  }
 }
 
-class _CircleIcon extends StatelessWidget {
+class _StatusRow extends StatelessWidget {
+  final String label;
+  final String value;
   final IconData icon;
-  final VoidCallback onTap;
+  final bool emphasized;
 
-  const _CircleIcon({required this.icon, required this.onTap});
+  const _StatusRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.emphasized = false,
+  });
 
   @override
-  Widget build(BuildContext context) => InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Container(
-          width: 54,
-          height: 54,
-          decoration: BoxDecoration(
-            color: AppColors.glassSoft,
-            shape: BoxShape.circle,
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Icon(icon, color: AppColors.text, size: 25),
-        ),
+  Widget build(BuildContext context) => _BaseRow(
+        icon: icon,
+        label: label,
+        value: value,
+        color: emphasized ? AppColors.warning : AppColors.text,
       );
 }
 
-class _VehicleHero extends StatelessWidget {
-  final bool connected;
-  final int battery;
+class _TelemetryRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final TelemetryStatus status;
 
-  const _VehicleHero({required this.connected, required this.battery});
+  const _TelemetryRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.status,
+  });
 
   @override
-  Widget build(BuildContext context) => GlassCard(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 30),
-        gradient: AppColors.cardGradient,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => _BaseRow(
+        icon: icon,
+        label: label,
+        value: value,
+        color: status == TelemetryStatus.current
+            ? AppColors.text
+            : status == TelemetryStatus.stale
+                ? AppColors.warning
+                : AppColors.textMuted,
+      );
+}
+
+class _BaseRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _BaseRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('YOUR VAYA', style: AppTypography.overline),
-                      SizedBox(height: 14),
-                      Text('VAYA One',
-                          style: TextStyle(
-                              color: AppColors.text,
-                              fontSize: 30,
-                              fontWeight: FontWeight.w800)),
-                      SizedBox(height: 6),
-                      Text('Titanium · 2026',
-                          style: TextStyle(
-                              color: AppColors.textMuted, fontSize: 17)),
-                    ],
-                  ),
-                ),
-                _StatusPill(label: connected ? 'Ready' : 'Idle'),
-              ],
+            Icon(icon, color: color),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(label,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
-            Center(
-                child: AnimatedVehicle(
-                    size: MediaQuery.sizeOf(context).width * 0.64,
-                    compact: true)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                    child: _MetricPill(
-                        icon: Icons.battery_5_bar_rounded,
-                        label: 'BATTERY',
-                        value: '$battery%')),
-                const SizedBox(width: 10),
-                const Expanded(
-                    child: _MetricPill(
-                        icon: Icons.location_on_outlined,
-                        label: 'RANGE',
-                        value: '24 km')),
-                const SizedBox(width: 10),
-                const Expanded(
-                    child: _MetricPill(
-                        icon: Icons.schedule_rounded,
-                        label: 'TIME',
-                        value: '5h 20m')),
-              ],
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                style: TextStyle(color: color, fontWeight: FontWeight.w800),
+              ),
             ),
           ],
         ),
       );
 }
 
-class _StatusPill extends StatelessWidget {
-  final String label;
+class _WarningPanel extends StatelessWidget {
+  final String message;
 
-  const _StatusPill({required this.label});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-        decoration: BoxDecoration(
-          color: AppColors.accent.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(22),
-        ),
-        child: Text(label,
-            style: const TextStyle(
-                color: AppColors.accent, fontWeight: FontWeight.w800)),
-      );
-}
-
-class _MetricPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-
-  const _MetricPill(
-      {required this.icon, required this.label, required this.value});
+  const _WarningPanel({required this.message});
 
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.035),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.border),
+          color: AppColors.warning.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.warning.withValues(alpha: 0.45)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Icon(icon, color: AppColors.textMuted, size: 15),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(label,
-                      style: const TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700)),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(value,
-                  style: const TextStyle(
-                      color: AppColors.text,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800)),
-            ),
+            const Icon(Icons.warning_amber_rounded, color: AppColors.warning),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
           ],
         ),
       );
 }
 
-class _QuickActions extends StatelessWidget {
-  final VoidCallback onControl;
-
-  const _QuickActions({required this.onControl});
+class _SafetyNotice extends StatelessWidget {
+  const _SafetyNotice();
 
   @override
-  Widget build(BuildContext context) => Row(
+  Widget build(BuildContext context) => const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Icon(Icons.info_outline_rounded,
+              color: AppColors.textMuted, size: 20),
+          SizedBox(width: 10),
           Expanded(
-              child: _ActionButton(
-                  icon: Icons.bolt_rounded, label: 'Drive', onTap: onControl)),
-          const SizedBox(width: 12),
-          Expanded(
-              child: _ActionButton(
-                  icon: Icons.battery_5_bar_rounded,
-                  label: 'Battery',
-                  onTap: () {})),
-          const SizedBox(width: 12),
-          Expanded(
-              child: _ActionButton(
-                  icon: Icons.monitor_heart_outlined,
-                  label: 'Comfort',
-                  onTap: () {})),
-          const SizedBox(width: 12),
-          Expanded(
-              child: _ActionButton(
-                  icon: Icons.shield_outlined,
-                  label: 'SOS',
-                  danger: true,
-                  onTap: () {})),
-        ],
-      );
-}
-
-class _ActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool danger;
-  final VoidCallback onTap;
-
-  const _ActionButton(
-      {required this.icon,
-      required this.label,
-      required this.onTap,
-      this.danger = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = danger ? AppColors.danger : AppColors.accent;
-    return GlassCard(
-      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
-      borderRadius: BorderRadius.circular(24),
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.17), shape: BoxShape.circle),
-            child: Icon(icon, color: color, size: 26),
+            child: Text(
+              'If the app loses connection while driving, use the wheelchair’s physical stop control.',
+              style: TextStyle(color: AppColors.textMuted, height: 1.4),
+            ),
           ),
-          const SizedBox(height: 12),
-          FittedBox(
-              child: Text(label,
-                  style: const TextStyle(
-                      color: AppColors.text, fontWeight: FontWeight.w800))),
         ],
-      ),
-    );
-  }
-}
-
-class _BatteryCard extends StatelessWidget {
-  final int percent;
-
-  const _BatteryCard({required this.percent});
-
-  @override
-  Widget build(BuildContext context) => GlassCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.battery_5_bar_rounded,
-                    color: AppColors.accent, size: 20),
-                SizedBox(width: 10),
-                Text('Battery',
-                    style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800)),
-                Spacer(),
-                Text('Charging capable',
-                    style: TextStyle(color: AppColors.textMuted)),
-              ],
-            ),
-            const SizedBox(height: 28),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('$percent',
-                    style: const TextStyle(
-                        color: AppColors.text,
-                        fontSize: 56,
-                        fontWeight: FontWeight.w800,
-                        height: 0.9)),
-                const Text('%',
-                    style: TextStyle(
-                        color: AppColors.textMuted,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800)),
-                const Spacer(),
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('Health',
-                        style: TextStyle(
-                            color: AppColors.textMuted, fontSize: 16)),
-                    SizedBox(height: 4),
-                    Text('Excellent',
-                        style: TextStyle(
-                            color: AppColors.success,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800)),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Text('Estimated 24 km remaining',
-                style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
-            const SizedBox(height: 24),
-            BatteryIndicator(percent: percent),
-          ],
-        ),
-      );
-}
-
-class _ActivityCard extends StatelessWidget {
-  const _ActivityCard();
-
-  @override
-  Widget build(BuildContext context) => GlassCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Text("Today's activity",
-                    style: TextStyle(
-                        color: AppColors.text,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800)),
-                Spacer(),
-                Text('View all',
-                    style: TextStyle(
-                        color: AppColors.accent, fontWeight: FontWeight.w800)),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: const [
-                Expanded(
-                    child: _ActivityMetric(value: '6.2km', label: 'DISTANCE')),
-                SizedBox(width: 10),
-                Expanded(child: _ActivityMetric(value: '3', label: 'RIDES')),
-                SizedBox(width: 10),
-                Expanded(
-                    child: _ActivityMetric(value: '1h 48m', label: 'ACTIVE')),
-              ],
-            ),
-          ],
-        ),
-      );
-}
-
-class _ActivityMetric extends StatelessWidget {
-  final String value;
-  final String label;
-
-  const _ActivityMetric({required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.04),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Column(
-          children: [
-            FittedBox(
-                child: Text(value,
-                    style: const TextStyle(
-                        color: AppColors.text,
-                        fontSize: 25,
-                        fontWeight: FontWeight.w800))),
-            const SizedBox(height: 8),
-            Text(label,
-                style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700)),
-          ],
-        ),
       );
 }

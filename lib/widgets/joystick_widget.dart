@@ -5,11 +5,13 @@ import '../core/theme/app_colors.dart';
 class JoystickWidget extends StatefulWidget {
   final void Function(double x, double y) onMove;
   final VoidCallback onRelease;
+  final bool enabled;
 
   const JoystickWidget({
     super.key,
     required this.onMove,
     required this.onRelease,
+    this.enabled = true,
   });
 
   @override
@@ -20,39 +22,61 @@ class _JoystickWidgetState extends State<JoystickWidget> {
   Offset _offset = Offset.zero;
 
   void _move(Offset localPosition, Size size) {
+    if (!widget.enabled) return;
     final radius = _radiusFor(size);
     final center = Offset(size.width / 2, size.height / 2);
     var delta = localPosition - center;
     if (delta.distance > radius) delta = delta / delta.distance * radius;
     setState(() => _offset = delta);
-    widget.onMove(delta.dx / radius, -delta.dy / radius);
+    final x = delta.dx / radius;
+    final y = -delta.dy / radius;
+    const deadZone = 0.06;
+    widget.onMove(
+      x.abs() < deadZone ? 0 : x,
+      y.abs() < deadZone ? 0 : y,
+    );
   }
 
   void _release() {
     setState(() => _offset = Offset.zero);
-    widget.onRelease();
+    if (widget.enabled) widget.onRelease();
   }
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
         builder: (context, constraints) {
           final size = Size(constraints.maxWidth, constraints.maxHeight);
-          return GestureDetector(
-            onPanStart: (details) => _move(details.localPosition, size),
-            onPanUpdate: (details) => _move(details.localPosition, size),
-            onPanEnd: (_) => _release(),
-            onPanCancel: _release,
-            child: CustomPaint(
-              painter: _JoystickPainter(_offset),
-              size: Size.infinite,
+          return Semantics(
+            label: 'Wheelchair movement control',
+            hint: widget.enabled
+                ? 'Touch, hold, and move in the direction of travel'
+                : 'Disabled while the wheelchair is disconnected',
+            enabled: widget.enabled,
+            child: Opacity(
+              opacity: widget.enabled ? 1 : 0.35,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanStart: widget.enabled
+                    ? (details) => _move(details.localPosition, size)
+                    : null,
+                onPanUpdate: widget.enabled
+                    ? (details) => _move(details.localPosition, size)
+                    : null,
+                onPanEnd: widget.enabled ? (_) => _release() : null,
+                onPanCancel: widget.enabled ? _release : null,
+                child: CustomPaint(
+                  painter: _JoystickPainter(_offset),
+                  size: Size.infinite,
+                ),
+              ),
             ),
           );
         },
       );
 
   double _radiusFor(Size size) => math.max(
-        64,
-        math.min(110, math.min(size.width, size.height) / 2 - 18),
+        24,
+        math.min(110, math.min(size.width, size.height) / 2 - 12),
       );
 }
 
@@ -65,8 +89,8 @@ class _JoystickPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final trackRadius = math.max(
-        64.0, math.min(110.0, math.min(size.width, size.height) / 2 - 18));
-    final knobRadius = math.max(28.0, math.min(44.0, trackRadius * 0.38));
+        24.0, math.min(110.0, math.min(size.width, size.height) / 2 - 12));
+    final knobRadius = math.max(12.0, math.min(44.0, trackRadius * 0.38));
     final safeOffset = offset.distance > trackRadius
         ? offset / offset.distance * trackRadius
         : offset;
@@ -98,15 +122,6 @@ class _JoystickPainter extends CustomPainter {
     canvas.drawCircle(knob, knobRadius, Paint()..color = AppColors.accent);
     canvas.drawCircle(knob, knobRadius * 0.55,
         Paint()..color = AppColors.accentDeep.withValues(alpha: 0.35));
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-          Rect.fromCenter(
-              center: knob,
-              width: knobRadius,
-              height: math.max(7, knobRadius * 0.22)),
-          const Radius.circular(8)),
-      Paint()..color = Colors.white.withValues(alpha: 0.34),
-    );
   }
 
   void _drawArrow(Canvas canvas, Offset tip, _Arrow arrow) {

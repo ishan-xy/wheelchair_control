@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'app_colors.dart';
 
 class AppTypography {
-  static const fontFamily = 'Roboto';
-
   static TextTheme get textTheme => const TextTheme(
         displayLarge: TextStyle(
           fontSize: 48,
@@ -67,6 +65,6 @@ class AppTypography {
     color: AppColors.textMuted,
     fontSize: 13,
     fontWeight: FontWeight.w800,
-    letterSpacing: 6,
+    letterSpacing: 0,
   );
 }

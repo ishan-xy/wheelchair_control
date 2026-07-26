@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   provider: ^6.1.2
-  permission_handler: ^11.3.1
+  permission_handler: ^12.0.3
   flutter_blue_plus: ^2.3.8
   cupertino_icons: ^1.0.8
 

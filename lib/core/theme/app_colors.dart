@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 class AppColors {
   static const ink = Color(0xFF03090B);
-  static const background = Color(0xFF02080A);
-  static const surface = Color(0xFF0D1417);
-  static const surfaceHigh = Color(0xFF121B1F);
+  static const background = Color(0xFF071014);
+  static const surface = Color(0xFF101A1F);
+  static const surfaceHigh = Color(0xFF18242A);
   static const glass = Color(0xCC111A1E);
   static const glassSoft = Color(0x99132126);
   static const border = Color(0xFF263238);
@@ -14,8 +14,8 @@ class AppColors {
   static const textMuted = Color(0xFFA3ADB5);
   static const textDim = Color(0xFF6F7980);
 
-  static const accent = Color(0xFF12A9F4);
-  static const accentDeep = Color(0xFF1E7DFF);
+  static const accent = Color(0xFF56A9D4);
+  static const accentDeep = Color(0xFF327FA8);
   static const success = Color(0xFF2ED58B);
   static const danger = Color(0xFFFF4655);
   static const warning = Color(0xFFF4B860);

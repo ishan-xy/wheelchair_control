@@ -1,0 +1,4 @@
+.pio/
+.env
+lib/NimBLE-Arduino/
+platformio.local.ini
