@@ -19,7 +19,10 @@ class Protocol {
                                 bool locked, bool emergencyStop,
                                 bool allowNewDevices,
                                 uint8_t trustedDeviceCount,
-                                bool pairingWindowOpen);
+                                bool pairingWindowOpen,
+                                bool chargerAvailable,
+                                bool charging,
+                                bool sosActive);
 
  private:
   static uint16_t crc16(const char* data, size_t length);

@@ -28,6 +28,9 @@ class VayaTelemetry {
   final bool allowNewDevices;
   final int trustedDeviceCount;
   final bool pairingWindowOpen;
+  final bool chargerAvailable;
+  final bool charging;
+  final bool sosActive;
   final String firmwareVersion;
 
   const VayaTelemetry({
@@ -46,6 +49,9 @@ class VayaTelemetry {
     required this.allowNewDevices,
     required this.trustedDeviceCount,
     required this.pairingWindowOpen,
+    required this.chargerAvailable,
+    required this.charging,
+    required this.sosActive,
     required this.firmwareVersion,
   });
 }
@@ -96,7 +102,10 @@ class VayaProtocol {
       );
     }
     if (parts[1] == 'T' &&
-        (parts.length == 15 || parts.length == 17 || parts.length == 18)) {
+        (parts.length == 15 ||
+            parts.length == 17 ||
+            parts.length == 18 ||
+            parts.length == 21)) {
       final values = [
         int.tryParse(parts[2]),
         int.tryParse(parts[3]),
@@ -123,7 +132,10 @@ class VayaProtocol {
         allowNewDevices: parts.length >= 17 && parts[14] == '1',
         trustedDeviceCount:
             parts.length >= 17 ? int.tryParse(parts[15]) ?? -1 : -1,
-        pairingWindowOpen: parts.length == 18 && parts[16] == '1',
+        pairingWindowOpen: parts.length >= 18 && parts[16] == '1',
+        chargerAvailable: parts.length == 21 && parts[17] == '1',
+        charging: parts.length == 21 && parts[18] == '1',
+        sosActive: parts.length == 21 && parts[19] == '1',
         firmwareVersion: parts.length >= 17 ? parts.last : parts[14],
       );
     }

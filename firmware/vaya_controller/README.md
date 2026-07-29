@@ -39,6 +39,9 @@ Edit `.env`:
 VAYA_BLE_PASSKEY=483921
 VAYA_UPLOAD_PORT=/dev/cu.usbserial-0001
 VAYA_FEATURE_PAIRING_BUTTON=false
+VAYA_FEATURE_AUTO_STANDBY=false
+VAYA_FEATURE_SOS_BUTTON=false
+VAYA_FEATURE_CHARGER_DETECTION=false
 ```
 
 The `.env` file is ignored by Git. Do not deploy the example key. Provision a
@@ -54,6 +57,25 @@ With the button enabled: a short press wakes BLE advertising without unlocking
 the chair. Holding it for five seconds opens a two-minute pairing window only
 when the chair is locked, stationary, and a trusted caregiver has allowed new
 devices. It disconnects the current phone without deleting any saved bond.
+
+## Optional hardware features
+
+Every optional feature is disabled by default. Enable a feature only after its
+input/output circuit has been wired, electrically verified, and tested with
+motor power isolated.
+
+- `VAYA_FEATURE_AUTO_STANDBY=true`: after ten minutes locked, stationary, and
+  disconnected, BLE advertising stops. The Pair / Wake button wakes the chair
+  back into its locked state. This is BLE standby, not ESP32 deep sleep.
+- `VAYA_FEATURE_SOS_BUTTON=true` with `VAYA_SOS_BUTTON_PIN=<gpio>`: holding
+  the button for two seconds publishes an SOS event for two minutes. It does
+  not replace the physical emergency-stop circuit.
+- `VAYA_FEATURE_ALERT_INDICATOR=true` with `VAYA_ALERT_INDICATOR_PIN=<gpio>`:
+  pulses an externally driven LED or buzzer while an SOS event is active.
+- `VAYA_FEATURE_CHARGER_DETECTION=true` with
+  `VAYA_CHARGER_DETECT_PIN=<gpio>`: locks the chair and stops motors whenever
+  charging is detected. Movement and unlock commands are rejected until the
+  charger is disconnected.
 
 ### Flash from the PlatformIO GUI
 

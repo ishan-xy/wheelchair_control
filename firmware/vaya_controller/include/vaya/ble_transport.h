@@ -27,6 +27,8 @@ class BleTransport {
   bool changePasskey(uint32_t passkey, uint32_t nowMs);
   bool setAllowNewDevices(bool allowed);
   void wake();
+  bool enterStandby();
+  bool inStandby() const;
   bool openPairingWindow(uint32_t nowMs);
   bool allowNewDevices() const;
   bool pairingWindowOpen(uint32_t nowMs) const;
@@ -57,7 +59,11 @@ class BleTransport {
   uint16_t connectionHandle_{BLE_HS_CONN_HANDLE_NONE};
   NimBLEAddress peerIdentityAddress_{};
   bool peerWasTrusted_{false};
+  // NimBLE persists a new bond before authentication-complete. Preserve the
+  // trust decision made when this connection first arrived.
+  bool newPeerAuthorizedAtConnection_{false};
   uint32_t pairingWindowUntilMs_{0};
+  bool standby_{false};
   RxFrame queue_[config::kRxQueueDepth]{};
   volatile uint8_t head_{0};
   volatile uint8_t tail_{0};

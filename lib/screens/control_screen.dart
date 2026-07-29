@@ -129,6 +129,10 @@ class _ControlScreenState extends State<ControlScreen>
     );
   }
 
+  void _requestEmergencyAssistance() {
+    context.read<AppState>().requestEmergencyAssistance();
+  }
+
   Future<void> _selectMode(DriveMode mode) async {
     final state = context.read<AppState>();
     if (!state.canDrive) return;
@@ -162,18 +166,23 @@ class _ControlScreenState extends State<ControlScreen>
               return Padding(
                 // Matches the Status and Settings screen heading grid while
                 // retaining compact vertical space for the fixed control UI.
-                padding: EdgeInsets.fromLTRB(20, compact ? 10 : 20, 20, 12),
+                padding: EdgeInsets.fromLTRB(20, compact ? 4 : 20, 20, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _ControlHeader(state: state, compact: compact),
-                    SizedBox(height: compact ? 8 : 12),
+                    _ControlHeader(
+                      state: state,
+                      compact: compact,
+                      onEmergencyAssistance: _requestEmergencyAssistance,
+                      showEmergencyAssistance: true,
+                    ),
+                    SizedBox(height: compact ? 4 : 12),
                     if (!state.canDrive) ...[
                       _SafetyWarning(
                         state: state,
                         short: accessibleCompact,
                       ),
-                      SizedBox(height: compact ? 8 : 12),
+                      SizedBox(height: compact ? 4 : 12),
                     ],
                     SegmentedButton<DriveMode>(
                       segments: [
@@ -197,7 +206,7 @@ class _ControlScreenState extends State<ControlScreen>
                           : null,
                       showSelectedIcon: false,
                     ),
-                    SizedBox(height: compact ? 8 : 12),
+                    SizedBox(height: compact ? 6 : 12),
                     Expanded(
                       child: Container(
                         decoration: BoxDecoration(
@@ -220,9 +229,11 @@ class _ControlScreenState extends State<ControlScreen>
                                     child: Text(
                                       state.canDrive
                                           ? 'Hold and move to drive'
-                                          : state.isConnected
-                                              ? 'Movement controls are unavailable'
-                                              : 'Connect to enable movement',
+                                          : state.isCharging
+                                              ? 'Charging: movement controls are disabled'
+                                              : state.isConnected
+                                                  ? 'Movement controls are unavailable'
+                                                  : 'Connect to enable movement',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -326,8 +337,15 @@ class _ControlScreenState extends State<ControlScreen>
 class _ControlHeader extends StatelessWidget {
   final AppState state;
   final bool compact;
+  final VoidCallback onEmergencyAssistance;
+  final bool showEmergencyAssistance;
 
-  const _ControlHeader({required this.state, required this.compact});
+  const _ControlHeader({
+    required this.state,
+    required this.compact,
+    required this.onEmergencyAssistance,
+    required this.showEmergencyAssistance,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -364,7 +382,15 @@ class _ControlHeader extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          title,
+          Row(
+            children: [
+              Expanded(child: title),
+              if (showEmergencyAssistance)
+                _EmergencyAssistanceButton(
+                  onPressed: onEmergencyAssistance,
+                ),
+            ],
+          ),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -389,10 +415,26 @@ class _ControlHeader extends StatelessWidget {
             ],
           ),
         ),
+        if (showEmergencyAssistance)
+          _EmergencyAssistanceButton(onPressed: onEmergencyAssistance),
         connection,
       ],
     );
   }
+}
+
+class _EmergencyAssistanceButton extends StatelessWidget {
+  const _EmergencyAssistanceButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        tooltip: 'Emergency assistance',
+        onPressed: onPressed,
+        color: AppColors.danger,
+        icon: const Icon(Icons.sos_rounded),
+      );
 }
 
 class _SafetyWarning extends StatelessWidget {
@@ -417,17 +459,21 @@ class _SafetyWarning extends StatelessWidget {
               child: Text(
                 state.emergencyStopActive
                     ? 'Emergency stop is active. Use the physical reset procedure.'
-                    : state.isLocked
-                        ? short
-                            ? 'Wheelchair is locked.'
-                            : 'Wheelchair is locked. Use Status to unlock it when it is safe to drive.'
-                        : state.faultCode == 'COMMAND_TIMEOUT'
-                            ? 'Control signal was interrupted. Release the joystick while control is restored.'
-                            : state.faultCode != 'NONE'
-                                ? 'Wheelchair fault: movement is locked.'
-                                : short
-                                    ? 'Movement is locked.'
-                                    : 'Movement controls are locked until the safety connection is ready.',
+                    : state.isCharging
+                        ? 'Charging is connected. Movement controls are disabled.'
+                        : state.sosActive
+                            ? 'SOS button was pressed. Check on the child.'
+                            : state.isLocked
+                                ? short
+                                    ? 'Wheelchair is locked.'
+                                    : 'Wheelchair is locked. Use Status to unlock it when it is safe to drive.'
+                                : state.faultCode == 'COMMAND_TIMEOUT'
+                                    ? 'Control signal was interrupted. Release the joystick while control is restored.'
+                                    : state.faultCode != 'NONE'
+                                        ? 'Wheelchair fault: movement is locked.'
+                                        : short
+                                            ? 'Movement is locked.'
+                                            : 'Movement controls are locked until the safety connection is ready.',
               ),
             ),
           ],

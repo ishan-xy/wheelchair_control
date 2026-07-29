@@ -30,7 +30,13 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 20),
               _ConnectionPanel(state: state),
               const SizedBox(height: 12),
+              if (state.sosNeedsAcknowledgement) ...[
+                _SosAcknowledgementPanel(state: state),
+                const SizedBox(height: 12),
+              ],
               _WheelchairLockPanel(state: state),
+              const SizedBox(height: 12),
+              _DriveReadinessPanel(state: state),
               if (state.errorMessage != null) ...[
                 const SizedBox(height: 12),
                 _WarningPanel(message: state.errorMessage!),
@@ -76,6 +82,119 @@ class HomeScreen extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SosAcknowledgementPanel extends StatelessWidget {
+  const _SosAcknowledgementPanel({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.danger.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.danger.withValues(alpha: 0.7)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.sos_rounded, color: AppColors.danger),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'SOS needs acknowledgement',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'The wheelchair SOS button was pressed. Confirm the child is safe before acknowledging this alert.',
+              style: TextStyle(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: state.acknowledgeSosAlert,
+              icon: const Icon(Icons.check_rounded),
+              label: const Text('Acknowledge alert'),
+            ),
+          ],
+        ),
+      );
+}
+
+class _DriveReadinessPanel extends StatelessWidget {
+  const _DriveReadinessPanel({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final complete = state.isDriveChecklistComplete;
+    final color = complete ? AppColors.success : AppColors.warning;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.65)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                complete
+                    ? Icons.verified_user_outlined
+                    : Icons.fact_check_outlined,
+                color: color,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  complete ? 'Ready to drive' : 'Pre-drive check',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...state.driveReadiness.map(
+            (check) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(
+                    check.ready
+                        ? Icons.check_circle_outline
+                        : Icons.info_outline,
+                    color: check.ready ? AppColors.success : AppColors.warning,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(check.label)),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      check.detail,
+                      textAlign: TextAlign.end,
+                      style: const TextStyle(color: AppColors.textMuted),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

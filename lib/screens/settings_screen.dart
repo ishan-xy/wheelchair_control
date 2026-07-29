@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../core/theme/app_colors.dart';
 import '../models/wheelchair_runtime.dart';
 import '../providers/app_state.dart';
+import 'emergency_settings_screen.dart';
 import 'onboarding_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -124,6 +125,29 @@ class SettingsScreen extends StatelessWidget {
                         icon: const Icon(Icons.delete_outline_rounded),
                         label: const Text('Remove wheelchair'),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              _Section(
+                title: 'Emergency assistance',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Choose who to call and message when SOS is requested.',
+                      style: TextStyle(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const EmergencySettingsScreen(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.sos_rounded),
+                      label: const Text('Configure emergency assistance'),
                     ),
                   ],
                 ),

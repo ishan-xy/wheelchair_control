@@ -17,7 +17,7 @@ class ServerCallbacks final : public NimBLEServerCallbacks {
 
   void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int) override {
     transport_.handleDisconnect();
-    NimBLEDevice::startAdvertising();
+    if (!transport_.inStandby()) NimBLEDevice::startAdvertising();
   }
 
   uint32_t onPassKeyDisplay() override { return transport_.passkey(); }
@@ -165,13 +165,26 @@ bool BleTransport::setAllowNewDevices(bool allowed) {
 }
 
 void BleTransport::wake() {
+  standby_ = false;
   if (!connected_) NimBLEDevice::startAdvertising();
   VAYA_LOG_INFO("BLE", "wake requested");
 }
 
+bool BleTransport::enterStandby() {
+  if (!config::kAutoStandbyEnabled || connected_) return false;
+  if (standby_) return true;
+  standby_ = true;
+  NimBLEDevice::stopAdvertising();
+  VAYA_LOG_INFO("BLE", "standby; advertising stopped");
+  return true;
+}
+
+bool BleTransport::inStandby() const { return standby_; }
+
 bool BleTransport::openPairingWindow(uint32_t nowMs) {
   if (!config::kPairingButtonEnabled || !allowNewDevices()) return false;
   pairingWindowUntilMs_ = nowMs + config::kPairingWindowMs;
+  standby_ = false;
   VAYA_LOG_INFO("BLE", "physical pairing window opened");
   if (server_ != nullptr && connectionHandle_ != BLE_HS_CONN_HANDLE_NONE) {
     server_->disconnect(connectionHandle_);
@@ -235,9 +248,7 @@ void BleTransport::update(uint32_t nowMs) {
 }
 
 void BleTransport::handleConnect(const NimBLEConnInfo& connection) {
-  if (!peerWasTrusted_ &&
-      (!allowNewDevices() ||
-       (config::kPairingButtonEnabled && !pairingWindowOpen(millis())))) {
+  if (!peerWasTrusted_ && !newPeerAuthorizedAtConnection_) {
     peerIdentityAddress_ = connection.getIdAddress();
     connectionHandle_ = connection.getConnHandle();
     VAYA_LOG_WARNING("BLE", "new caregiver device rejected by trust policy");
@@ -254,6 +265,10 @@ void BleTransport::handleConnect(const NimBLEConnInfo& connection) {
 void BleTransport::handleIncomingConnection(const NimBLEConnInfo& connection) {
   peerIdentityAddress_ = connection.getIdAddress();
   peerWasTrusted_ = NimBLEDevice::isBonded(peerIdentityAddress_);
+  newPeerAuthorizedAtConnection_ =
+      peerWasTrusted_ ||
+      (allowNewDevices() &&
+       (!config::kPairingButtonEnabled || pairingWindowOpen(millis())));
 }
 
 void BleTransport::handleDisconnect() {
@@ -261,6 +276,7 @@ void BleTransport::handleDisconnect() {
   connected_ = false;
   connectionHandle_ = BLE_HS_CONN_HANDLE_NONE;
   peerWasTrusted_ = false;
+  newPeerAuthorizedAtConnection_ = false;
   if (wasAuthenticated) disconnectedEvent_ = true;
   portENTER_CRITICAL(&queueMux_);
   head_ = 0;

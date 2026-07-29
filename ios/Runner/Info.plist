@@ -49,7 +49,9 @@
     <string>Used to connect to the wheelchair controller.</string>
     <key>NSBluetoothPeripheralUsageDescription</key>
     <string>Used to connect to the wheelchair controller.</string>
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>Location access is needed for BLE scanning.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+    <string>Location is used to include a current location link in an emergency message and to find the wheelchair during setup.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID confirms sensitive wheelchair safety actions.</string>
 </dict>
 </plist>

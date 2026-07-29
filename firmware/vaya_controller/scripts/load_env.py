@@ -17,6 +17,25 @@ def read_env(path):
     return values
 
 
+def add_bool_define(values, key):
+    value = values.get(key, "false").lower()
+    if value not in {"true", "false"}:
+        raise RuntimeError(f"{key} must be true or false.")
+    env.Append(CPPDEFINES=[(key, int(value == "true"))])
+    return value == "true"
+
+
+def add_pin_define(values, key, required=False):
+    raw = values.get(key, "-1")
+    try:
+        pin = int(raw)
+    except ValueError as error:
+        raise RuntimeError(f"{key} must be a GPIO number.") from error
+    if pin < -1 or pin > 39 or (required and pin < 0):
+        raise RuntimeError(f"Set {key} to a GPIO number between 0 and 39.")
+    env.Append(CPPDEFINES=[(key, pin)])
+
+
 project_dir = Path(env.subst("$PROJECT_DIR"))
 values = read_env(project_dir / ".env")
 
@@ -29,23 +48,17 @@ if not passkey.isdigit() or len(passkey) != 6 or passkey == "000000":
 
 env.Append(CPPDEFINES=[("VAYA_BLE_PASSKEY", int(passkey))])
 
-pairing_button = values.get("VAYA_FEATURE_PAIRING_BUTTON", "false").lower()
-if pairing_button not in {"true", "false"}:
-    raise RuntimeError("VAYA_FEATURE_PAIRING_BUTTON must be true or false.")
-env.Append(CPPDEFINES=[("VAYA_FEATURE_PAIRING_BUTTON", int(pairing_button == "true"))])
-
-pair_wake_pin = values.get("VAYA_PAIR_WAKE_BUTTON_PIN", "-1")
-try:
-    pair_wake_pin = int(pair_wake_pin)
-except ValueError as error:
-    raise RuntimeError("VAYA_PAIR_WAKE_BUTTON_PIN must be a GPIO number.") from error
-if pair_wake_pin < -1 or pair_wake_pin > 39:
-    raise RuntimeError("VAYA_PAIR_WAKE_BUTTON_PIN must be between 0 and 39.")
-if pairing_button == "true" and pair_wake_pin < 0:
-    raise RuntimeError(
-        "Set VAYA_PAIR_WAKE_BUTTON_PIN when VAYA_FEATURE_PAIRING_BUTTON is true."
-    )
-env.Append(CPPDEFINES=[("VAYA_PAIR_WAKE_BUTTON_PIN", pair_wake_pin)])
+pairing_button = add_bool_define(values, "VAYA_FEATURE_PAIRING_BUTTON")
+add_pin_define(values, "VAYA_PAIR_WAKE_BUTTON_PIN", pairing_button)
+auto_standby = add_bool_define(values, "VAYA_FEATURE_AUTO_STANDBY")
+if auto_standby and not pairing_button:
+    raise RuntimeError("VAYA_FEATURE_AUTO_STANDBY requires VAYA_FEATURE_PAIRING_BUTTON=true.")
+sos_button = add_bool_define(values, "VAYA_FEATURE_SOS_BUTTON")
+add_pin_define(values, "VAYA_SOS_BUTTON_PIN", sos_button)
+alert_indicator = add_bool_define(values, "VAYA_FEATURE_ALERT_INDICATOR")
+add_pin_define(values, "VAYA_ALERT_INDICATOR_PIN", alert_indicator)
+charger_detection = add_bool_define(values, "VAYA_FEATURE_CHARGER_DETECTION")
+add_pin_define(values, "VAYA_CHARGER_DETECT_PIN", charger_detection)
 
 upload_port = values.get("VAYA_UPLOAD_PORT", "")
 if upload_port:

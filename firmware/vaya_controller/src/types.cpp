@@ -59,6 +59,7 @@ const char* toString(ErrorCode value) {
     case ErrorCode::kQueueFull: return "QUEUE_FULL";
     case ErrorCode::kPasskeyPolicyFailed: return "PASSKEY_POLICY_FAILED";
     case ErrorCode::kSecurityStorageFailed: return "SECURITY_STORAGE_FAILED";
+    case ErrorCode::kChargingActive: return "CHARGING_ACTIVE";
   }
   return "UNKNOWN";
 }

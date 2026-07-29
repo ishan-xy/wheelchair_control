@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../core/widgets/emergency_assistance_sheet.dart';
+import '../providers/app_state.dart';
 import '../screens/control_screen.dart';
 import '../screens/home_screen.dart';
 import '../screens/settings_screen.dart';
@@ -12,6 +17,21 @@ class MainNav extends StatefulWidget {
 
 class MainNavState extends State<MainNav> {
   int _index = 0;
+  StreamSubscription<EmergencySignalSource>? _emergencySignalSub;
+  bool _presentingEmergencySheet = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emergencySignalSub =
+        context.read<AppState>().emergencySignalStream.listen(_showEmergency);
+  }
+
+  @override
+  void dispose() {
+    _emergencySignalSub?.cancel();
+    super.dispose();
+  }
 
   static MainNavState? of(BuildContext context) =>
       context.findAncestorStateOfType<MainNavState>();
@@ -25,6 +45,15 @@ class MainNavState extends State<MainNav> {
   void setIndex(int value) {
     if (value == _index) return;
     setState(() => _index = value);
+  }
+
+  void _showEmergency(EmergencySignalSource source) {
+    if (!mounted || _presentingEmergencySheet) return;
+    _presentingEmergencySheet = true;
+    unawaited(
+        showEmergencyAssistanceSheet(context, source: source).whenComplete(
+      () => _presentingEmergencySheet = false,
+    ));
   }
 
   @override

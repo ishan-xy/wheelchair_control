@@ -76,6 +76,17 @@ void main() {
     expect(telemetry.pairingWindowOpen, isTrue);
   });
 
+  test('decodes charging and SOS telemetry', () {
+    final frame = withCrc(
+      'V2|T|8|91822|CONNECTED_LOCKED|NOT_CONFIGURED|0|0|-1|0|0|NONE|1|0|0|1|0|1|1|1|2.1.0',
+    );
+    final telemetry = VayaProtocol.decode(frame)! as VayaTelemetry;
+
+    expect(telemetry.chargerAvailable, isTrue);
+    expect(telemetry.charging, isTrue);
+    expect(telemetry.sosActive, isTrue);
+  });
+
   test('rejects a corrupted controller frame', () {
     expect(
       VayaProtocol.decode('V2|A|42|OK|CONNECTED_IDLE|0000'),

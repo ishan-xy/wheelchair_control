@@ -1,8 +1,10 @@
 #include <Arduino.h>
 
+#include "vaya/alert_indicator.h"
 #include "vaya/battery_sensor.h"
 #include "vaya/ble_transport.h"
 #include "vaya/config.h"
+#include "vaya/charger_sensor.h"
 #include "vaya/device_controller.h"
 #include "vaya/logger.h"
 #include "vaya/motor_controller.h"
@@ -10,6 +12,8 @@
 #include "vaya/pair_wake_button.h"
 #include "vaya/pairing_policy_store.h"
 #include "vaya/protocol.h"
+#include "vaya/sos_button.h"
+#include "vaya/standby_manager.h"
 
 namespace {
 
@@ -20,9 +24,19 @@ vaya::PairingPolicyStore pairingPolicy;
 vaya::BleTransport ble(passkeyStore, pairingPolicy);
 vaya::DeviceController controller(motors);
 vaya::PairWakeButton pairWakeButton;
+vaya::ChargerSensor charger;
+vaya::SosButton sosButton;
+vaya::AlertIndicator alertIndicator;
+vaya::StandbyManager standby;
 
 uint32_t telemetrySequence = 1;
 uint32_t lastTelemetryMs = 0;
+uint32_t sosActiveUntilMs = 0;
+
+bool sosActive(uint32_t nowMs) {
+  return sosActiveUntilMs != 0 &&
+         static_cast<int32_t>(sosActiveUntilMs - nowMs) > 0;
+}
 
 void sendAck(uint32_t sequence, vaya::ErrorCode error) {
   char frame[vaya::config::kMaxFrameLength + 1]{};
@@ -80,7 +94,8 @@ void sendTelemetry(uint32_t nowMs) {
       battery.reading(), motors.snapshot(), controller.fault(),
       controller.locked(), controller.emergencyStopActive(),
       ble.allowNewDevices(), ble.trustedDeviceCount(),
-      ble.pairingWindowOpen(nowMs));
+      ble.pairingWindowOpen(nowMs), charger.available(), charger.connected(),
+      sosActive(nowMs));
   if (length > 0) ble.send(frame, length);
 }
 
@@ -95,6 +110,9 @@ void setup() {
   motors.begin();
   controller.begin();
   pairWakeButton.begin();
+  charger.begin();
+  sosButton.begin();
+  alertIndicator.begin();
   battery.begin();
   if (!passkeyStore.begin(vaya::config::kInitialBlePasskey) ||
       !pairingPolicy.begin() || !ble.begin()) {
@@ -105,17 +123,29 @@ void setup() {
 void loop() {
   const uint32_t nowMs = millis();
 
+  charger.update(nowMs);
+  controller.setCharging(charger.connected());
   pairWakeButton.update(nowMs);
   if (pairWakeButton.consumeWakeEvent()) {
+    standby.wake();
     ble.wake();
   }
   if (pairWakeButton.consumePairingRequestEvent()) {
+    standby.wake();
     if (controller.canOpenPairingWindow() && ble.openPairingWindow(nowMs)) {
       VAYA_LOG_INFO("BLE", "pairing button accepted");
     } else {
       VAYA_LOG_WARNING("BLE", "pairing button rejected; chair must be locked, stopped, and allow new devices");
     }
   }
+  sosButton.update(nowMs);
+  if (sosButton.consumeSosEvent()) {
+    sosActiveUntilMs = nowMs + vaya::config::kSosActiveMs;
+    standby.wake();
+    ble.wake();
+    VAYA_LOG_WARNING("SOS", "physical SOS requested");
+  }
+  alertIndicator.setSosActive(sosActive(nowMs));
 
   if (ble.consumeDisconnectedEvent()) {
     controller.onDisconnected();
@@ -136,8 +166,12 @@ void loop() {
   motors.update(nowMs);
   controller.update(nowMs);
   battery.update(nowMs);
+  standby.update(nowMs, controller.canEnterStandby() && !charger.connected());
+  if (standby.inStandby()) ble.enterStandby();
+  alertIndicator.update(nowMs);
   sendTelemetry(nowMs);
   ble.update(nowMs);
   vaya::Logger::flush();
   taskYIELD();
 }
+#include "vaya/charger_sensor.h"

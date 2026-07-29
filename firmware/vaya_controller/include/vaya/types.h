@@ -68,6 +68,7 @@ enum class ErrorCode : uint8_t {
   kQueueFull,
   kPasskeyPolicyFailed,
   kSecurityStorageFailed,
+  kChargingActive,
 };
 
 struct Command {

@@ -13,6 +13,7 @@ class DeviceController {
   void begin();
   void onConnected(uint32_t nowMs);
   void onDisconnected();
+  void setCharging(bool charging);
   ErrorCode handle(const Command& command, uint32_t nowMs);
   void update(uint32_t nowMs);
   void setStartupFault(FaultCode fault);
@@ -24,6 +25,8 @@ class DeviceController {
   bool emergencyStopActive() const;
   bool canChangePairingPolicy(uint32_t nowMs) const;
   bool canOpenPairingWindow() const;
+  bool canEnterStandby() const;
+  bool charging() const;
 
  private:
   bool physicalEstopAsserted() const;
@@ -38,6 +41,7 @@ class DeviceController {
   bool connected_{false};
   bool locked_{true};
   bool emergencyStop_{false};
+  bool charging_{false};
   bool protocolNegotiated_{false};
   uint32_t lastSequence_{0};
   CommandType lastCommandType_{CommandType::kInvalid};

@@ -42,6 +42,22 @@ void DeviceController::onDisconnected() {
                             : DeviceState::kDisconnected);
 }
 
+void DeviceController::setCharging(bool charging) {
+  if (charging_ == charging) return;
+  charging_ = charging;
+  if (!charging_) {
+    VAYA_LOG_INFO("CHARGER", "drive remains locked after charging ended");
+    return;
+  }
+  locked_ = true;
+  leaseExpiresMs_ = 0;
+  lastMoveCommandMs_ = 0;
+  motors_.emergencyStop();
+  transition(connected_ ? DeviceState::kConnectedLocked
+                        : DeviceState::kDisconnected);
+  VAYA_LOG_WARNING("CHARGER", "charging detected; motors stopped and locked");
+}
+
 ErrorCode DeviceController::handle(const Command& command, uint32_t nowMs) {
   if (command.sequence < lastSequence_ ||
       (command.sequence == lastSequence_ &&
@@ -95,6 +111,7 @@ ErrorCode DeviceController::handle(const Command& command, uint32_t nowMs) {
         return ErrorCode::kInvalidValue;
       }
       if (command.valueA == 0) {
+        if (charging_) return ErrorCode::kChargingActive;
         locked_ = false;
         transition(DeviceState::kConnectedIdle);
       } else {
@@ -105,6 +122,7 @@ ErrorCode DeviceController::handle(const Command& command, uint32_t nowMs) {
       return ErrorCode::kNone;
     case CommandType::kMove:
       if (!controlLeaseValid(nowMs)) return ErrorCode::kControlRequired;
+      if (charging_) return ErrorCode::kChargingActive;
       if (locked_) return ErrorCode::kLocked;
       if (fault_ != FaultCode::kNone) return ErrorCode::kFaultActive;
       motors_.setDriveRequest(static_cast<int16_t>(command.valueA),
@@ -245,6 +263,15 @@ bool DeviceController::canOpenPairingWindow() const {
   return locked_ && !emergencyStop_ && fault_ == FaultCode::kNone &&
          motors.atRest && !motors.motionRequested;
 }
+
+bool DeviceController::canEnterStandby() const {
+  const MotorSnapshot motors = motors_.snapshot();
+  return !connected_ && locked_ && !emergencyStop_ &&
+         fault_ == FaultCode::kNone && motors.atRest &&
+         !motors.motionRequested;
+}
+
+bool DeviceController::charging() const { return charging_; }
 
 bool DeviceController::physicalEstopAsserted() const {
   if (config::kPhysicalEstopPin < 0) return false;

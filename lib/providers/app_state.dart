@@ -1,15 +1,22 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/wheelchair_runtime.dart';
 import '../services/bluetooth_service.dart';
 import '../services/vaya_protocol.dart';
 
+enum EmergencySignalSource { physicalButton, app }
+
 class AppState extends ChangeNotifier {
   final WheelchairBluetooth _bt;
+  final LocalAuthentication _localAuthentication;
 
-  AppState({WheelchairBluetooth? bluetooth})
-      : _bt = bluetooth ?? WheelchairBluetooth() {
+  AppState({
+    WheelchairBluetooth? bluetooth,
+    LocalAuthentication? localAuthentication,
+  })  : _bt = bluetooth ?? WheelchairBluetooth(),
+        _localAuthentication = localAuthentication ?? LocalAuthentication() {
     _connectionSub = _bt.connectionStream.listen(_handleConnectionChange);
     _errorSub = _bt.errorStream.listen(_setError);
     _ackSub = _bt.ackStream.listen(_handleAck);
@@ -24,6 +31,8 @@ class AppState extends ChangeNotifier {
   StreamSubscription<String>? _errorSub;
   StreamSubscription<VayaAck>? _ackSub;
   final Map<int, Completer<VayaAck>> _pendingAcks = {};
+  final _emergencySignalController =
+      StreamController<EmergencySignalSource>.broadcast();
   Timer? _scanTimer;
   Timer? _healthTimer;
   Timer? _controlHeartbeat;
@@ -34,6 +43,7 @@ class AppState extends ChangeNotifier {
   int? _lastMovementCommandMs;
   bool _recoveringControl = false;
   bool isChangingPasskey = false;
+  bool isAuthenticating = false;
   bool isUpdatingWheelchairLock = false;
   bool isUpdatingNewDeviceTrust = false;
 
@@ -58,9 +68,15 @@ class AppState extends ChangeNotifier {
   bool allowNewDevices = false;
   int trustedDeviceCount = 0;
   bool pairingWindowOpen = false;
+  bool chargerDetectionAvailable = false;
+  bool isCharging = false;
+  bool sosActive = false;
+  bool sosNeedsAcknowledgement = false;
   String? errorMessage;
 
   bool get isConnected => _bt.isConnected;
+  Stream<EmergencySignalSource> get emergencySignalStream =>
+      _emergencySignalController.stream;
   String get connectedDeviceName => _bt.connectedName;
   String get connectedDeviceAddress => _bt.connectedAddress;
   bool get hasRememberedWheelchair => _bt.hasRememberedDevice;
@@ -71,7 +87,49 @@ class AppState extends ChangeNotifier {
       protocolReady &&
       !isLocked &&
       !emergencyStopActive &&
+      !isCharging &&
       faultCode == 'NONE';
+  List<DriveReadinessCheck> get driveReadiness => [
+        DriveReadinessCheck(
+          label: 'Connection',
+          detail: isConnected && protocolReady
+              ? 'Safety connection active'
+              : 'Connect to the wheelchair',
+          ready: isConnected && protocolReady,
+        ),
+        DriveReadinessCheck(
+          label: 'Lock state',
+          detail: isLocked ? 'Unlock when it is safe to drive' : 'Unlocked',
+          ready: !isLocked,
+        ),
+        DriveReadinessCheck(
+          label: 'Movement',
+          detail: motionStatus == WheelchairMotionStatus.stopped
+              ? 'Stopped'
+              : 'Confirm the wheelchair is stopped',
+          ready: motionStatus == WheelchairMotionStatus.stopped,
+        ),
+        DriveReadinessCheck(
+          label: 'Safety state',
+          detail: emergencyStopActive
+              ? 'Emergency stop is active'
+              : isCharging
+                  ? 'Charging is connected'
+                  : faultCode == 'NONE'
+                      ? 'No fault reported'
+                      : 'Wheelchair fault reported',
+          ready: !emergencyStopActive && !isCharging && faultCode == 'NONE',
+        ),
+        DriveReadinessCheck(
+          label: 'Battery',
+          detail: batteryStatus == TelemetryStatus.current
+              ? '$battery% reported'
+              : 'Battery information unavailable',
+          ready: batteryStatus == TelemetryStatus.current,
+        ),
+      ];
+  bool get isDriveChecklistComplete =>
+      driveReadiness.every((check) => check.ready);
   bool get isWheelchairAtRest =>
       speedStatus == TelemetryStatus.current &&
       currentSpeed == 0 &&
@@ -82,6 +140,7 @@ class AppState extends ChangeNotifier {
       protocolReady &&
       !isUpdatingWheelchairLock &&
       !emergencyStopActive &&
+      !isCharging &&
       faultCode == 'NONE' &&
       isWheelchairAtRest;
   bool get canChangeNewDeviceTrust =>
@@ -355,6 +414,16 @@ class AppState extends ChangeNotifier {
     return ack?.accepted ?? false;
   }
 
+  void requestEmergencyAssistance() {
+    _emergencySignalController.add(EmergencySignalSource.app);
+  }
+
+  void acknowledgeSosAlert() {
+    if (!sosNeedsAcknowledgement) return;
+    sosNeedsAcknowledgement = false;
+    _safeNotify();
+  }
+
   Future<bool> setDriveMode({required bool indoor}) async {
     if (!canDrive) return false;
     final ack = await _sendConfirmed(
@@ -365,6 +434,12 @@ class AppState extends ChangeNotifier {
 
   Future<bool> setWheelchairLocked(bool locked) async {
     if (!canChangeWheelchairLock) return false;
+    if (!locked &&
+        !await _authenticateCaregiver(
+          'Confirm your identity to unlock VAYA One.',
+        )) {
+      return false;
+    }
     isUpdatingWheelchairLock = true;
     _safeNotify();
     try {
@@ -390,6 +465,11 @@ class AppState extends ChangeNotifier {
       return false;
     }
     if (!isConnected || !protocolReady || isChangingPasskey) return false;
+    if (!await _authenticateCaregiver(
+      'Confirm your identity to change the wheelchair passkey.',
+    )) {
+      return false;
+    }
     if (!await stopWheelchair()) {
       errorMessage =
           'The wheelchair must be stopped before changing its passkey.';
@@ -493,6 +573,14 @@ class AppState extends ChangeNotifier {
           ? trustedDeviceCount
           : data.trustedDeviceCount;
       pairingWindowOpen = data.pairingWindowOpen;
+      chargerDetectionAvailable = data.chargerAvailable;
+      isCharging = data.charging;
+      final newSosSignal = data.sosActive && !sosActive;
+      sosActive = data.sosActive;
+      if (newSosSignal) {
+        sosNeedsAcknowledgement = true;
+        _emergencySignalController.add(EmergencySignalSource.physicalButton);
+      }
       _speedUpdatedAt = now;
       currentSpeed = data.leftPwm.abs() > data.rightPwm.abs()
           ? data.leftPwm.abs()
@@ -518,6 +606,38 @@ class AppState extends ChangeNotifier {
     _healthTimer = null;
     _controlHeartbeat?.cancel();
     _controlHeartbeat = null;
+  }
+
+  Future<bool> _authenticateCaregiver(String reason) async {
+    if (isAuthenticating) return false;
+    isAuthenticating = true;
+    errorMessage = null;
+    _safeNotify();
+    try {
+      if (!await _localAuthentication.isDeviceSupported()) {
+        errorMessage =
+            'Set up a device passcode, Face ID, or fingerprint before changing this safety setting.';
+        return false;
+      }
+      final confirmed = await _localAuthentication.authenticate(
+        localizedReason: reason,
+        biometricOnly: false,
+        persistAcrossBackgrounding: true,
+        sensitiveTransaction: true,
+      );
+      if (!confirmed) errorMessage = 'Identity confirmation was not completed.';
+      return confirmed;
+    } on LocalAuthException {
+      errorMessage =
+          'Identity confirmation is unavailable. Check the phone security settings and try again.';
+      return false;
+    } catch (_) {
+      errorMessage = 'Identity confirmation could not be completed.';
+      return false;
+    } finally {
+      isAuthenticating = false;
+      _safeNotify();
+    }
   }
 
   void _handleConnectionChange(bool connected) {
@@ -590,6 +710,9 @@ class AppState extends ChangeNotifier {
     allowNewDevices = false;
     trustedDeviceCount = 0;
     pairingWindowOpen = false;
+    chargerDetectionAvailable = false;
+    isCharging = false;
+    sosActive = false;
     _lastMovementCommandMs = null;
   }
 
@@ -789,6 +912,7 @@ class AppState extends ChangeNotifier {
     _healthTimer?.cancel();
     _controlHeartbeat?.cancel();
     _telemetrySub?.cancel();
+    _emergencySignalController.close();
     _discoverySub?.cancel();
     _connectionSub?.cancel();
     _errorSub?.cancel();

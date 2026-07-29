@@ -131,16 +131,20 @@ size_t Protocol::encodeTelemetry(char* output, size_t capacity,
                                  bool locked, bool emergencyStop,
                                  bool allowNewDevices,
                                  uint8_t trustedDeviceCount,
-                                 bool pairingWindowOpen) {
+                                 bool pairingWindowOpen,
+                                 bool chargerAvailable,
+                                 bool charging,
+                                 bool sosActive) {
   const int length = snprintf(
-      output, capacity, "V2|T|%lu|%lu|%s|%s|%u|%lu|%d|%d|%d|%s|%u|%u|%u|%u|%u",
+      output, capacity, "V2|T|%lu|%lu|%s|%s|%u|%lu|%d|%d|%d|%s|%u|%u|%u|%u|%u|%u|%u|%u",
       static_cast<unsigned long>(sequence),
       static_cast<unsigned long>(uptimeMs), toString(state),
       toString(battery.state), battery.raw,
       static_cast<unsigned long>(battery.voltageMv), battery.percentage,
       motors.leftPwm, motors.rightPwm, toString(fault), locked ? 1U : 0U,
       emergencyStop ? 1U : 0U, allowNewDevices ? 1U : 0U,
-      static_cast<unsigned>(trustedDeviceCount), pairingWindowOpen ? 1U : 0U);
+      static_cast<unsigned>(trustedDeviceCount), pairingWindowOpen ? 1U : 0U,
+      chargerAvailable ? 1U : 0U, charging ? 1U : 0U, sosActive ? 1U : 0U);
   if (length <= 0 || static_cast<size_t>(length + 1) >= capacity) return 0;
   const int withVersion =
       snprintf(output + length, capacity - length, "|%s",

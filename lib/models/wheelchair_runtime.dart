@@ -19,6 +19,18 @@ enum TelemetryStatus {
   stale,
 }
 
+class DriveReadinessCheck {
+  final String label;
+  final String detail;
+  final bool ready;
+
+  const DriveReadinessCheck({
+    required this.label,
+    required this.detail,
+    required this.ready,
+  });
+}
+
 extension ConnectionStatusLabel on ConnectionStatus {
   String get label => switch (this) {
         ConnectionStatus.disconnected => 'Disconnected',
