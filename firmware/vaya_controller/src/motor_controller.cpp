@@ -17,18 +17,25 @@ const char* directionLabel(int16_t pwm) {
 
 }  // namespace
 
-MotorController::MotorOutput::MotorOutput(uint8_t in1, uint8_t in2,
-                                          uint8_t enable, uint8_t channel)
-    : in1_(in1), in2_(in2), enable_(enable), channel_(channel) {}
+MotorController::MotorOutput::MotorOutput(uint8_t sleep, uint8_t direction,
+                                          uint8_t pwm, uint8_t channel,
+                                          bool forwardDirectionHigh)
+    : sleep_(sleep),
+      direction_(direction),
+      pwm_(pwm),
+      channel_(channel),
+      forwardDirectionHigh_(forwardDirectionHigh) {}
 
 void MotorController::MotorOutput::begin() {
-  pinMode(in1_, OUTPUT);
-  pinMode(in2_, OUTPUT);
+  pinMode(sleep_, OUTPUT);
+  pinMode(direction_, OUTPUT);
+  digitalWrite(sleep_, HIGH);
+  digitalWrite(direction_, LOW);
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-  ledcAttach(enable_, config::kPwmFrequencyHz, config::kPwmResolutionBits);
+  ledcAttach(pwm_, config::kPwmFrequencyHz, config::kPwmResolutionBits);
 #else
   ledcSetup(channel_, config::kPwmFrequencyHz, config::kPwmResolutionBits);
-  ledcAttachPin(enable_, channel_);
+  ledcAttachPin(pwm_, channel_);
 #endif
   stop();
 }
@@ -41,30 +48,31 @@ void MotorController::MotorOutput::write(int16_t signedPwm) {
     return;
   }
   const bool forward = signedPwm > 0;
-  digitalWrite(in1_, forward ? LOW : HIGH);
-  digitalWrite(in2_, forward ? HIGH : LOW);
+  digitalWrite(direction_,
+               forward == forwardDirectionHigh_ ? HIGH : LOW);
+  digitalWrite(sleep_, LOW);
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-  ledcWrite(enable_, duty);
+  ledcWrite(pwm_, duty);
 #else
   ledcWrite(channel_, duty);
 #endif
 }
 
 void MotorController::MotorOutput::stop() {
-  digitalWrite(in1_, LOW);
-  digitalWrite(in2_, LOW);
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
-  ledcWrite(enable_, 0);
+  ledcWrite(pwm_, 0);
 #else
   ledcWrite(channel_, 0);
 #endif
+  digitalWrite(sleep_, HIGH);
+  digitalWrite(direction_, LOW);
 }
 
 MotorController::MotorController()
-    : left_(config::kLeftIn1, config::kLeftIn2, config::kLeftEnable,
-            config::kLeftPwmChannel),
-      right_(config::kRightIn1, config::kRightIn2, config::kRightEnable,
-             config::kRightPwmChannel),
+    : left_(config::kLeftSleep, config::kLeftDirection, config::kLeftPwm,
+            config::kLeftPwmChannel, config::kLeftForwardDirectionHigh),
+      right_(config::kRightSleep, config::kRightDirection, config::kRightPwm,
+             config::kRightPwmChannel, config::kRightForwardDirectionHigh),
       pwmLimit_(config::kDefaultPwmLimit) {}
 
 void MotorController::begin() {

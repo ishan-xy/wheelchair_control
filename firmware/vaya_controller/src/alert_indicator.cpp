@@ -12,13 +12,17 @@ void AlertIndicator::begin() {
                config::kAlertIndicatorActiveHigh ? LOW : HIGH);
 }
 
-void AlertIndicator::setSosActive(bool active) {
-  sosActive_ = active;
+void AlertIndicator::setAlarmActive(bool active) {
+  alarmActive_ = active;
+}
+
+void AlertIndicator::requestPairingFeedback(uint32_t nowMs) {
+  pairingFeedbackUntilMs_ = nowMs + 120;
 }
 
 void AlertIndicator::update(uint32_t nowMs) {
   if (!enabled_) return;
-  if (!sosActive_) {
+  if (!alarmActive_ && static_cast<int32_t>(pairingFeedbackUntilMs_ - nowMs) <= 0) {
     outputOn_ = false;
   } else if (nowMs - lastToggleAtMs_ >= config::kAlertIndicatorPeriodMs) {
     lastToggleAtMs_ = nowMs;

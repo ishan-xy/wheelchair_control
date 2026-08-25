@@ -12,8 +12,11 @@
 #include "vaya/pair_wake_button.h"
 #include "vaya/pairing_policy_store.h"
 #include "vaya/protocol.h"
+#include "vaya/reset_button.h"
 #include "vaya/sos_button.h"
 #include "vaya/standby_manager.h"
+#include "vaya/status_indicators.h"
+#include "vaya/topple_detector.h"
 
 namespace {
 
@@ -28,14 +31,16 @@ vaya::ChargerSensor charger;
 vaya::SosButton sosButton;
 vaya::AlertIndicator alertIndicator;
 vaya::StandbyManager standby;
+vaya::ResetButton resetButton;
+vaya::StatusIndicators statusIndicators;
+vaya::ToppleDetector toppleDetector;
 
 uint32_t telemetrySequence = 1;
 uint32_t lastTelemetryMs = 0;
-uint32_t sosActiveUntilMs = 0;
-
-bool sosActive(uint32_t nowMs) {
-  return sosActiveUntilMs != 0 &&
-         static_cast<int32_t>(sosActiveUntilMs - nowMs) > 0;
+bool emergencyAlarmActive() {
+  const vaya::FaultCode fault = controller.fault();
+  return fault == vaya::FaultCode::kToppleDetected ||
+         fault == vaya::FaultCode::kSosRequested;
 }
 
 void sendAck(uint32_t sequence, vaya::ErrorCode error) {
@@ -95,7 +100,7 @@ void sendTelemetry(uint32_t nowMs) {
       controller.locked(), controller.emergencyStopActive(),
       ble.allowNewDevices(), ble.trustedDeviceCount(),
       ble.pairingWindowOpen(nowMs), charger.available(), charger.connected(),
-      sosActive(nowMs));
+      emergencyAlarmActive());
   if (length > 0) ble.send(frame, length);
 }
 
@@ -113,11 +118,15 @@ void setup() {
   charger.begin();
   sosButton.begin();
   alertIndicator.begin();
+  resetButton.begin();
+  statusIndicators.begin();
+  toppleDetector.begin();
   battery.begin();
   if (!passkeyStore.begin(vaya::config::kInitialBlePasskey) ||
       !pairingPolicy.begin() || !ble.begin()) {
     controller.setStartupFault(vaya::FaultCode::kSecurityConfiguration);
   }
+  controller.setSafetyStartupReady(toppleDetector.ready());
 }
 
 void loop() {
@@ -125,6 +134,15 @@ void loop() {
 
   charger.update(nowMs);
   controller.setCharging(charger.connected());
+  toppleDetector.update(nowMs);
+  controller.setSafetyStartupReady(toppleDetector.ready());
+  if (toppleDetector.state() == vaya::SensorState::kFailed) {
+    controller.setStartupFault(vaya::FaultCode::kImuUnavailable);
+  }
+  if (toppleDetector.consumeToppleEvent()) {
+    controller.latchSafetyEvent(vaya::FaultCode::kToppleDetected);
+    VAYA_LOG_WARNING("SAFETY", "topple detected; chair locked");
+  }
   pairWakeButton.update(nowMs);
   if (pairWakeButton.consumeWakeEvent()) {
     standby.wake();
@@ -133,6 +151,7 @@ void loop() {
   if (pairWakeButton.consumePairingRequestEvent()) {
     standby.wake();
     if (controller.canOpenPairingWindow() && ble.openPairingWindow(nowMs)) {
+      alertIndicator.requestPairingFeedback(nowMs);
       VAYA_LOG_INFO("BLE", "pairing button accepted");
     } else {
       VAYA_LOG_WARNING("BLE", "pairing button rejected; chair must be locked, stopped, and allow new devices");
@@ -140,12 +159,19 @@ void loop() {
   }
   sosButton.update(nowMs);
   if (sosButton.consumeSosEvent()) {
-    sosActiveUntilMs = nowMs + vaya::config::kSosActiveMs;
+    controller.latchSafetyEvent(vaya::FaultCode::kSosRequested);
     standby.wake();
     ble.wake();
-    VAYA_LOG_WARNING("SOS", "physical SOS requested");
+    VAYA_LOG_WARNING("SOS", "physical SOS requested; chair locked");
   }
-  alertIndicator.setSosActive(sosActive(nowMs));
+  resetButton.update(nowMs);
+  if (resetButton.consumeResetEvent()) {
+    if (controller.resetSafetyEvent(toppleDetector.canReset())) {
+      toppleDetector.acknowledgeReset();
+    } else {
+      VAYA_LOG_WARNING("SAFETY", "physical reset rejected");
+    }
+  }
 
   if (ble.consumeDisconnectedEvent()) {
     controller.onDisconnected();
@@ -168,7 +194,12 @@ void loop() {
   battery.update(nowMs);
   standby.update(nowMs, controller.canEnterStandby() && !charger.connected());
   if (standby.inStandby()) ble.enterStandby();
+  alertIndicator.setAlarmActive(emergencyAlarmActive());
   alertIndicator.update(nowMs);
+  statusIndicators.update(nowMs, ble.pairingWindowOpen(nowMs), ble.connected(),
+                          standby.inStandby(),
+                          controller.fault() != vaya::FaultCode::kNone ||
+                              controller.emergencyStopActive());
   sendTelemetry(nowMs);
   ble.update(nowMs);
   vaya::Logger::flush();

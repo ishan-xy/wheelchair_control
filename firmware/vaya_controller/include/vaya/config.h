@@ -34,6 +34,34 @@
 #define VAYA_ALERT_INDICATOR_PIN -1
 #endif
 
+#ifndef VAYA_FEATURE_RESET_BUTTON
+#define VAYA_FEATURE_RESET_BUTTON 0
+#endif
+
+#ifndef VAYA_RESET_BUTTON_PIN
+#define VAYA_RESET_BUTTON_PIN -1
+#endif
+
+#ifndef VAYA_FEATURE_PAIRING_LED
+#define VAYA_FEATURE_PAIRING_LED 0
+#endif
+
+#ifndef VAYA_PAIRING_LED_PIN
+#define VAYA_PAIRING_LED_PIN -1
+#endif
+
+#ifndef VAYA_FEATURE_FAULT_LED
+#define VAYA_FEATURE_FAULT_LED 0
+#endif
+
+#ifndef VAYA_FAULT_LED_PIN
+#define VAYA_FAULT_LED_PIN -1
+#endif
+
+#ifndef VAYA_FEATURE_TOPPLE_DETECTION
+#define VAYA_FEATURE_TOPPLE_DETECTION 0
+#endif
+
 #ifndef VAYA_FEATURE_CHARGER_DETECTION
 #define VAYA_FEATURE_CHARGER_DETECTION 0
 #endif
@@ -68,7 +96,27 @@ inline constexpr uint32_t kSosActiveMs = 120000;
 inline constexpr bool kAlertIndicatorEnabled = VAYA_FEATURE_ALERT_INDICATOR != 0;
 inline constexpr int8_t kAlertIndicatorPin = VAYA_ALERT_INDICATOR_PIN;
 inline constexpr bool kAlertIndicatorActiveHigh = true;
-inline constexpr uint16_t kAlertIndicatorPeriodMs = 300;
+inline constexpr uint16_t kAlertIndicatorPeriodMs = 250;
+inline constexpr bool kResetButtonEnabled = VAYA_FEATURE_RESET_BUTTON != 0;
+inline constexpr int8_t kResetButtonPin = VAYA_RESET_BUTTON_PIN;
+inline constexpr bool kResetButtonActiveLow = true;
+inline constexpr uint16_t kResetButtonDebounceMs = 35;
+inline constexpr uint32_t kResetButtonHoldMs = 3000;
+inline constexpr bool kPairingLedEnabled = VAYA_FEATURE_PAIRING_LED != 0;
+inline constexpr int8_t kPairingLedPin = VAYA_PAIRING_LED_PIN;
+inline constexpr bool kFaultLedEnabled = VAYA_FEATURE_FAULT_LED != 0;
+inline constexpr int8_t kFaultLedPin = VAYA_FAULT_LED_PIN;
+inline constexpr uint16_t kPairingLedPeriodMs = 300;
+inline constexpr bool kToppleDetectionEnabled = VAYA_FEATURE_TOPPLE_DETECTION != 0;
+inline constexpr uint8_t kMpu6050Address = 0x68;
+inline constexpr uint8_t kMpu6050SdaPin = 21;
+inline constexpr uint8_t kMpu6050SclPin = 22;
+inline constexpr uint16_t kImuSamplePeriodMs = 10;
+inline constexpr uint16_t kImuCalibrationMs = 1500;
+inline constexpr int16_t kToppleThresholdDegrees = 35;
+inline constexpr int16_t kToppleResetThresholdDegrees = 10;
+inline constexpr uint16_t kToppleTriggerMs = 250;
+inline constexpr uint16_t kToppleResetStableMs = 2000;
 inline constexpr bool kChargerDetectionEnabled =
     VAYA_FEATURE_CHARGER_DETECTION != 0;
 inline constexpr int8_t kChargerDetectPin = VAYA_CHARGER_DETECT_PIN;
@@ -78,24 +126,27 @@ inline constexpr char kServiceUuid[] = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
 inline constexpr char kRxUuid[] = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
 inline constexpr char kTxUuid[] = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
 
-inline constexpr uint8_t kLeftIn1 = 27;
-inline constexpr uint8_t kLeftIn2 = 26;
-inline constexpr uint8_t kLeftEnable = 13;
-inline constexpr uint8_t kRightIn1 = 33;
-inline constexpr uint8_t kRightIn2 = 32;
-inline constexpr uint8_t kRightEnable = 14;
+// Verified RMCS-2305 wiring: SLEEP is active low; PWM and DIR control each channel.
+inline constexpr uint8_t kLeftSleep = 18;
+inline constexpr uint8_t kLeftDirection = 25;
+inline constexpr uint8_t kLeftPwm = 26;
+inline constexpr bool kLeftForwardDirectionHigh = true;
+inline constexpr uint8_t kRightSleep = 19;
+inline constexpr uint8_t kRightDirection = 14;
+inline constexpr uint8_t kRightPwm = 27;
+inline constexpr bool kRightForwardDirectionHigh = false;
 inline constexpr uint8_t kBatteryAdcPin = 34;
 
 // Set to a valid GPIO wired to the monitored physical E-stop circuit.
 inline constexpr int8_t kPhysicalEstopPin = -1;
 inline constexpr bool kPhysicalEstopActiveLow = true;
 
-inline constexpr uint32_t kPwmFrequencyHz = 30000;
+inline constexpr uint32_t kPwmFrequencyHz = 20000;
 inline constexpr uint8_t kPwmResolutionBits = 8;
 inline constexpr uint8_t kLeftPwmChannel = 0;
 inline constexpr uint8_t kRightPwmChannel = 1;
-inline constexpr int16_t kIndoorPwmLimit = 90;
-inline constexpr int16_t kOutdoorPwmLimit = 160;
+inline constexpr int16_t kIndoorPwmLimit = 125;
+inline constexpr int16_t kOutdoorPwmLimit = 255;
 inline constexpr int16_t kDefaultPwmLimit = kIndoorPwmLimit;
 inline constexpr int16_t kInputDeadZoneMilli = 60;
 inline constexpr uint16_t kMotorUpdateMs = 10;
@@ -142,6 +193,12 @@ static_assert(!kSosButtonEnabled || kSosButtonPin >= 0,
               "Set VAYA_SOS_BUTTON_PIN when enabling the SOS button.");
 static_assert(!kAlertIndicatorEnabled || kAlertIndicatorPin >= 0,
               "Set VAYA_ALERT_INDICATOR_PIN when enabling the alert indicator.");
+static_assert(!kResetButtonEnabled || kResetButtonPin >= 0,
+              "Set VAYA_RESET_BUTTON_PIN when enabling the reset button.");
+static_assert(!kPairingLedEnabled || kPairingLedPin >= 0,
+              "Set VAYA_PAIRING_LED_PIN when enabling the pairing LED.");
+static_assert(!kFaultLedEnabled || kFaultLedPin >= 0,
+              "Set VAYA_FAULT_LED_PIN when enabling the fault LED.");
 static_assert(!kChargerDetectionEnabled || kChargerDetectPin >= 0,
               "Set VAYA_CHARGER_DETECT_PIN when enabling charger detection.");
 

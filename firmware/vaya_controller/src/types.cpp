@@ -38,6 +38,9 @@ const char* toString(FaultCode value) {
     case FaultCode::kBatterySensor: return "BATTERY_SENSOR";
     case FaultCode::kPhysicalEmergencyStop: return "PHYSICAL_ESTOP";
     case FaultCode::kSecurityConfiguration: return "SECURITY_CONFIG";
+    case FaultCode::kToppleDetected: return "TOPPLE_DETECTED";
+    case FaultCode::kSosRequested: return "SOS_REQUESTED";
+    case FaultCode::kImuUnavailable: return "IMU_UNAVAILABLE";
   }
   return "UNKNOWN";
 }

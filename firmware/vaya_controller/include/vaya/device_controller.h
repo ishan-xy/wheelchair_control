@@ -17,7 +17,10 @@ class DeviceController {
   ErrorCode handle(const Command& command, uint32_t nowMs);
   void update(uint32_t nowMs);
   void setStartupFault(FaultCode fault);
+  void setSafetyStartupReady(bool ready);
   void raiseFault(FaultCode fault);
+  void latchSafetyEvent(FaultCode fault);
+  bool resetSafetyEvent(bool toppleResetSafe);
 
   DeviceState state() const;
   FaultCode fault() const;
@@ -41,6 +44,7 @@ class DeviceController {
   bool connected_{false};
   bool locked_{true};
   bool emergencyStop_{false};
+  bool safetyStartupReady_{true};
   bool charging_{false};
   bool protocolNegotiated_{false};
   uint32_t lastSequence_{0};

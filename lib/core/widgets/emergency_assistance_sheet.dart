@@ -16,8 +16,8 @@ Future<void> showEmergencyAssistanceSheet(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      isDismissible: source != EmergencySignalSource.physicalButton,
-      enableDrag: source != EmergencySignalSource.physicalButton,
+      isDismissible: source == EmergencySignalSource.app,
+      enableDrag: source == EmergencySignalSource.app,
       builder: (_) => _EmergencyAssistanceSheet(source: source),
     );
 
@@ -36,7 +36,6 @@ class _EmergencyAssistanceSheetState extends State<_EmergencyAssistanceSheet> {
   EmergencyPlan _plan = const EmergencyPlan();
   EmergencyLocation? _location;
   bool _loading = true;
-  bool _automaticCallStarted = false;
   String? _error;
 
   @override
@@ -57,12 +56,6 @@ class _EmergencyAssistanceSheetState extends State<_EmergencyAssistanceSheet> {
         _location = results[1] as EmergencyLocation?;
         _loading = false;
       });
-      if (widget.source == EmergencySignalSource.physicalButton &&
-          _plan.contacts.isEmpty &&
-          !_automaticCallStarted) {
-        _automaticCallStarted = true;
-        unawaited(_call());
-      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -125,9 +118,14 @@ class _EmergencyAssistanceSheetState extends State<_EmergencyAssistanceSheet> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    widget.source == EmergencySignalSource.physicalButton
-                        ? 'The wheelchair SOS button was held.'
-                        : 'Emergency assistance was requested from this phone.',
+                    switch (widget.source) {
+                      EmergencySignalSource.topple =>
+                        'Possible wheelchair topple detected. Check the rider now.',
+                      EmergencySignalSource.sos =>
+                        'The wheelchair SOS button was held.',
+                      EmergencySignalSource.app =>
+                        'Emergency assistance was requested from this phone.',
+                    },
                     style: const TextStyle(color: AppColors.textMuted),
                   ),
                   const SizedBox(height: 10),
@@ -174,17 +172,14 @@ class _EmergencyAssistanceSheetState extends State<_EmergencyAssistanceSheet> {
                   const SizedBox(height: 4),
                   TextButton(
                     onPressed: () {
-                      if (widget.source ==
-                          EmergencySignalSource.physicalButton) {
+                      if (widget.source != EmergencySignalSource.app) {
                         context.read<AppState>().acknowledgeSosAlert();
                       }
                       Navigator.pop(context);
                     },
-                    child: Text(
-                      widget.source == EmergencySignalSource.physicalButton
-                          ? 'Acknowledge alert'
-                          : 'Close',
-                    ),
+                    child: Text(widget.source == EmergencySignalSource.app
+                        ? 'Close'
+                        : 'Acknowledge alert'),
                   ),
                 ],
               ),

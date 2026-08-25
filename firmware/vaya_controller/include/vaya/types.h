@@ -50,6 +50,9 @@ enum class FaultCode : uint8_t {
   kBatterySensor,
   kPhysicalEmergencyStop,
   kSecurityConfiguration,
+  kToppleDetected,
+  kSosRequested,
+  kImuUnavailable,
 };
 
 enum class ErrorCode : uint8_t {

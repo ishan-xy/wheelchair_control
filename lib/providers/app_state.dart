@@ -6,7 +6,7 @@ import '../models/wheelchair_runtime.dart';
 import '../services/bluetooth_service.dart';
 import '../services/vaya_protocol.dart';
 
-enum EmergencySignalSource { physicalButton, app }
+enum EmergencySignalSource { sos, topple, app }
 
 class AppState extends ChangeNotifier {
   final WheelchairBluetooth _bt;
@@ -562,6 +562,11 @@ class AppState extends ChangeNotifier {
     await _stopTelemetry();
     _telemetrySub = _bt.telemetryStream.listen((data) {
       final now = DateTime.now();
+      final previousFault = faultCode;
+      final newToppleSignal =
+          data.fault == 'TOPPLE_DETECTED' && previousFault != data.fault;
+      final newSosSignal =
+          data.fault == 'SOS_REQUESTED' && previousFault != data.fault;
       controllerState = data.state;
       batterySensorState = data.batteryState;
       faultCode = data.fault;
@@ -575,11 +580,13 @@ class AppState extends ChangeNotifier {
       pairingWindowOpen = data.pairingWindowOpen;
       chargerDetectionAvailable = data.chargerAvailable;
       isCharging = data.charging;
-      final newSosSignal = data.sosActive && !sosActive;
+      final newLegacySosSignal = data.sosActive && !sosActive;
       sosActive = data.sosActive;
-      if (newSosSignal) {
+      if (newToppleSignal || newSosSignal || newLegacySosSignal) {
         sosNeedsAcknowledgement = true;
-        _emergencySignalController.add(EmergencySignalSource.physicalButton);
+        _emergencySignalController.add(newToppleSignal
+            ? EmergencySignalSource.topple
+            : EmergencySignalSource.sos);
       }
       _speedUpdatedAt = now;
       currentSpeed = data.leftPwm.abs() > data.rightPwm.abs()
@@ -717,15 +724,28 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> _negotiateProtocol() async {
-    final hello = await _sendConfirmed(VayaProtocol.hello, retries: 1);
-    if (hello?.accepted != true) return false;
-    if (!await _acquireControlLease()) return false;
-    _startControlHeartbeat();
-    return true;
+    // iOS can report the GATT connection before the ESP32 receives its
+    // authenticated-session callback. Keep this one connection attempt alive
+    // while the secure link settles instead of asking the caregiver to retry.
+    for (var attempt = 0; attempt < 4; attempt++) {
+      if (!isConnected) return false;
+
+      final hello = await _sendConfirmed(VayaProtocol.hello, retries: 1);
+      if (hello?.accepted == true && await _acquireControlLease()) {
+        _startControlHeartbeat();
+        return true;
+      }
+
+      if (attempt < 3) {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    }
+    return false;
   }
 
-  Future<bool> _acquireControlLease() async {
-    final acquire = await _sendConfirmed(VayaProtocol.acquire, retries: 1);
+  Future<bool> _acquireControlLease({int retries = 1}) async {
+    final acquire =
+        await _sendConfirmed(VayaProtocol.acquire, retries: retries);
     if (acquire?.accepted != true) return false;
     // A lease is deliberately locked. The caregiver must unlock from Status.
     protocolReady = true;

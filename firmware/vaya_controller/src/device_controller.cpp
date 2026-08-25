@@ -121,6 +121,7 @@ ErrorCode DeviceController::handle(const Command& command, uint32_t nowMs) {
       leaseExpiresMs_ = nowMs + config::kControlLeaseMs;
       return ErrorCode::kNone;
     case CommandType::kMove:
+      if (!safetyStartupReady_) return ErrorCode::kFaultActive;
       if (!controlLeaseValid(nowMs)) return ErrorCode::kControlRequired;
       if (charging_) return ErrorCode::kChargingActive;
       if (locked_) return ErrorCode::kLocked;
@@ -239,11 +240,37 @@ void DeviceController::setStartupFault(FaultCode fault) {
   raiseFault(fault);
 }
 
+void DeviceController::setSafetyStartupReady(bool ready) {
+  safetyStartupReady_ = ready;
+}
+
 void DeviceController::raiseFault(FaultCode fault) {
   fault_ = fault;
   locked_ = true;
   motors_.emergencyStop();
   transition(DeviceState::kFault);
+}
+
+void DeviceController::latchSafetyEvent(FaultCode fault) {
+  latchEmergencyStop(fault);
+}
+
+bool DeviceController::resetSafetyEvent(bool toppleResetSafe) {
+  if (!emergencyStop_) return false;
+  if (fault_ == FaultCode::kToppleDetected && !toppleResetSafe) return false;
+  if (fault_ != FaultCode::kToppleDetected && fault_ != FaultCode::kSosRequested) {
+    return false;
+  }
+  emergencyStop_ = false;
+  fault_ = FaultCode::kNone;
+  locked_ = true;
+  leaseExpiresMs_ = 0;
+  lastMoveCommandMs_ = 0;
+  motors_.emergencyStop();
+  transition(connected_ ? DeviceState::kConnectedLocked
+                        : DeviceState::kDisconnected);
+  VAYA_LOG_INFO("SAFETY", "physical reset accepted; chair remains locked");
+  return true;
 }
 
 DeviceState DeviceController::state() const { return state_; }

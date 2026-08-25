@@ -20,16 +20,18 @@ class MotorController {
  private:
   class MotorOutput {
    public:
-    MotorOutput(uint8_t in1, uint8_t in2, uint8_t enable, uint8_t channel);
+    MotorOutput(uint8_t sleep, uint8_t direction, uint8_t pwm,
+                uint8_t channel, bool forwardDirectionHigh);
     void begin();
     void write(int16_t signedPwm);
     void stop();
 
    private:
-    uint8_t in1_;
-    uint8_t in2_;
-    uint8_t enable_;
+    uint8_t sleep_;
+    uint8_t direction_;
+    uint8_t pwm_;
     uint8_t channel_;
+    bool forwardDirectionHigh_;
   };
 
   static int16_t approach(int16_t current, int16_t target, int16_t step);
