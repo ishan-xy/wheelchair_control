@@ -94,7 +94,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     'Keep the wheelchair powered on and nearby.',
                     style: TextStyle(color: AppColors.textMuted, fontSize: 16),
                   ),
@@ -189,7 +189,7 @@ class _BrandMark extends StatelessWidget {
   const _BrandMark();
 
   @override
-  Widget build(BuildContext context) => const Row(
+  Widget build(BuildContext context) => Row(
         children: [
           Icon(Icons.accessible_forward_rounded, color: AppColors.accent),
           SizedBox(width: 10),
@@ -329,7 +329,7 @@ class _CenteredState extends StatelessWidget {
                 Text(
                   message!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textMuted),
+                  style: TextStyle(color: AppColors.textMuted),
                 ),
               ],
               if (showProgress) ...[
@@ -401,9 +401,8 @@ class _PairingResetNotice extends StatelessWidget {
             Expanded(
               child: Text(
                 message ??
-                    'This iPhone has an old Bluetooth pairing for the '
-                        'wheelchair. Open Settings > Bluetooth, tap VAYA One, '
-                        'and choose Forget This Device before connecting again.',
+                    'Open Settings > Bluetooth, tap VAYA One, then choose '
+                        'Forget This Device.',
               ),
             ),
           ],

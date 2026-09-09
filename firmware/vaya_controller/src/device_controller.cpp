@@ -8,10 +8,6 @@ namespace vaya {
 DeviceController::DeviceController(MotorController& motors) : motors_(motors) {}
 
 void DeviceController::begin() {
-  if (config::kPhysicalEstopPin >= 0) {
-    pinMode(config::kPhysicalEstopPin,
-            config::kPhysicalEstopActiveLow ? INPUT_PULLUP : INPUT_PULLDOWN);
-  }
   motors_.emergencyStop();
   transition(DeviceState::kDisconnected);
 }
@@ -24,6 +20,7 @@ void DeviceController::onConnected(uint32_t) {
   lastMoveCommandMs_ = 0;
   lastSequence_ = 0;
   lastCommandType_ = CommandType::kInvalid;
+  physicalJoystickEnabled_ = false;
   motors_.emergencyStop();
   transition(emergencyStop_ ? DeviceState::kEmergencyStop
                             : fault_ != FaultCode::kNone
@@ -37,6 +34,7 @@ void DeviceController::onDisconnected() {
   protocolNegotiated_ = false;
   leaseExpiresMs_ = 0;
   lastMoveCommandMs_ = 0;
+  physicalJoystickEnabled_ = false;
   motors_.emergencyStop();
   transition(emergencyStop_ ? DeviceState::kEmergencyStop
                             : DeviceState::kDisconnected);
@@ -74,7 +72,7 @@ ErrorCode DeviceController::handle(const Command& command, uint32_t nowMs) {
     return ErrorCode::kNone;
   }
   if (command.type == CommandType::kStop) {
-    motors_.requestStop();
+    motors_.requestStop("APP");
     lastMoveCommandMs_ = 0;
     if (!emergencyStop_) transition(DeviceState::kStopping);
     return ErrorCode::kNone;
@@ -121,15 +119,28 @@ ErrorCode DeviceController::handle(const Command& command, uint32_t nowMs) {
       leaseExpiresMs_ = nowMs + config::kControlLeaseMs;
       return ErrorCode::kNone;
     case CommandType::kMove:
+      if (physicalJoystickEnabled_) return ErrorCode::kInputSourceActive;
       if (!safetyStartupReady_) return ErrorCode::kFaultActive;
       if (!controlLeaseValid(nowMs)) return ErrorCode::kControlRequired;
       if (charging_) return ErrorCode::kChargingActive;
       if (locked_) return ErrorCode::kLocked;
       if (fault_ != FaultCode::kNone) return ErrorCode::kFaultActive;
       motors_.setDriveRequest(static_cast<int16_t>(command.valueA),
-                              static_cast<int16_t>(command.valueB));
+                              static_cast<int16_t>(command.valueB), "APP");
       lastMoveCommandMs_ = nowMs;
       leaseExpiresMs_ = nowMs + config::kControlLeaseMs;
+      return ErrorCode::kNone;
+    case CommandType::kSetInputSource:
+      if (!controlLeaseValid(nowMs)) return ErrorCode::kControlRequired;
+      if (command.valueA != 0 && !config::kPhysicalJoystickAvailable) {
+        return ErrorCode::kInvalidValue;
+      }
+      physicalJoystickEnabled_ = command.valueA != 0;
+      motors_.emergencyStop();
+      lastMoveCommandMs_ = 0;
+      leaseExpiresMs_ = nowMs + config::kControlLeaseMs;
+      transition(locked_ ? DeviceState::kConnectedLocked
+                         : DeviceState::kConnectedIdle);
       return ErrorCode::kNone;
     case CommandType::kSetMode:
       if (!controlLeaseValid(nowMs)) return ErrorCode::kControlRequired;
@@ -170,18 +181,7 @@ ErrorCode DeviceController::handle(const Command& command, uint32_t nowMs) {
       leaseExpiresMs_ = nowMs + config::kControlLeaseMs;
       return ErrorCode::kNone;
     case CommandType::kResetEmergencyStop:
-      if (config::kPhysicalEstopPin < 0) {
-        return ErrorCode::kPhysicalEstopRequired;
-      }
-      if (physicalEstopAsserted() || !motors_.snapshot().atRest) {
-        return ErrorCode::kEmergencyStopActive;
-      }
-      emergencyStop_ = false;
-      fault_ = FaultCode::kNone;
-      locked_ = true;
-      transition(connected_ ? DeviceState::kConnectedLocked
-                            : DeviceState::kDisconnected);
-      return ErrorCode::kNone;
+      return ErrorCode::kInvalidValue;
     case CommandType::kPing:
       if (controlLeaseValid(nowMs)) {
         leaseExpiresMs_ = nowMs + config::kControlLeaseMs;
@@ -192,11 +192,22 @@ ErrorCode DeviceController::handle(const Command& command, uint32_t nowMs) {
   }
 }
 
+ErrorCode DeviceController::handlePhysicalMove(int16_t xMilli, int16_t yMilli,
+                                               uint32_t nowMs) {
+  if (!physicalJoystickEnabled_) return ErrorCode::kInputSourceActive;
+  if (!safetyStartupReady_) return ErrorCode::kFaultActive;
+  if (!controlLeaseValid(nowMs)) return ErrorCode::kControlRequired;
+  if (charging_) return ErrorCode::kChargingActive;
+  if (locked_) return ErrorCode::kLocked;
+  if (emergencyStop_) return ErrorCode::kEmergencyStopActive;
+  if (fault_ != FaultCode::kNone) return ErrorCode::kFaultActive;
+  motors_.setDriveRequest(xMilli, yMilli, "PHYSICAL");
+  lastMoveCommandMs_ = nowMs;
+  leaseExpiresMs_ = nowMs + config::kControlLeaseMs;
+  return ErrorCode::kNone;
+}
+
 void DeviceController::update(uint32_t nowMs) {
-  if (physicalEstopAsserted()) {
-    latchEmergencyStop(FaultCode::kPhysicalEmergencyStop);
-    return;
-  }
   if (!connected_) {
     motors_.emergencyStop();
     return;
@@ -255,11 +266,24 @@ void DeviceController::latchSafetyEvent(FaultCode fault) {
   latchEmergencyStop(fault);
 }
 
-bool DeviceController::resetSafetyEvent(bool toppleResetSafe) {
-  if (!emergencyStop_) return false;
-  if (fault_ == FaultCode::kToppleDetected && !toppleResetSafe) return false;
+ErrorCode DeviceController::resetSafetyEvent(const Command& command,
+                                             bool toppleResetSafe) {
+  if (command.sequence < lastSequence_) return ErrorCode::kBadSequence;
+  if (command.sequence == lastSequence_) {
+    return lastCommandType_ == CommandType::kResetEmergencyStop &&
+                   !emergencyStop_
+               ? ErrorCode::kNone
+               : ErrorCode::kBadSequence;
+  }
+  if (!connected_ || !protocolNegotiated_) return ErrorCode::kControlRequired;
+  if (!emergencyStop_ || !motors_.snapshot().atRest) {
+    return ErrorCode::kEmergencyStopActive;
+  }
+  if (fault_ == FaultCode::kToppleDetected && !toppleResetSafe) {
+    return ErrorCode::kEmergencyStopActive;
+  }
   if (fault_ != FaultCode::kToppleDetected && fault_ != FaultCode::kSosRequested) {
-    return false;
+    if (fault_ != FaultCode::kNone) return ErrorCode::kFaultActive;
   }
   emergencyStop_ = false;
   fault_ = FaultCode::kNone;
@@ -269,8 +293,10 @@ bool DeviceController::resetSafetyEvent(bool toppleResetSafe) {
   motors_.emergencyStop();
   transition(connected_ ? DeviceState::kConnectedLocked
                         : DeviceState::kDisconnected);
-  VAYA_LOG_INFO("SAFETY", "physical reset accepted; chair remains locked");
-  return true;
+  lastSequence_ = command.sequence;
+  lastCommandType_ = command.type;
+  VAYA_LOG_INFO("SAFETY", "app reset accepted; chair remains locked");
+  return ErrorCode::kNone;
 }
 
 DeviceState DeviceController::state() const { return state_; }
@@ -299,11 +325,8 @@ bool DeviceController::canEnterStandby() const {
 }
 
 bool DeviceController::charging() const { return charging_; }
-
-bool DeviceController::physicalEstopAsserted() const {
-  if (config::kPhysicalEstopPin < 0) return false;
-  const bool level = digitalRead(config::kPhysicalEstopPin) == HIGH;
-  return config::kPhysicalEstopActiveLow ? !level : level;
+bool DeviceController::physicalJoystickEnabled() const {
+  return physicalJoystickEnabled_;
 }
 
 bool DeviceController::controlLeaseValid(uint32_t nowMs) const {

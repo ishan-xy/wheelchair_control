@@ -29,6 +29,7 @@ enum class CommandType : uint8_t {
   kForgetBond,
   kChangePasskey,
   kSetNewDevicePairing,
+  kSetInputSource,
   kPing,
 };
 
@@ -48,7 +49,6 @@ enum class FaultCode : uint8_t {
   kRxOverflow,
   kMotorOutput,
   kBatterySensor,
-  kPhysicalEmergencyStop,
   kSecurityConfiguration,
   kToppleDetected,
   kSosRequested,
@@ -66,12 +66,12 @@ enum class ErrorCode : uint8_t {
   kControlRequired,
   kLocked,
   kEmergencyStopActive,
-  kPhysicalEstopRequired,
   kFaultActive,
   kQueueFull,
   kPasskeyPolicyFailed,
   kSecurityStorageFailed,
   kChargingActive,
+  kInputSourceActive,
 };
 
 struct Command {

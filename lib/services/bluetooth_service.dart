@@ -35,8 +35,12 @@ class WheelchairBluetooth {
   static const _nusRxUuid = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E';
   static const scanDuration = Duration(seconds: 12);
   static const securePairingTimeout = Duration(minutes: 2);
-  static const _reconnectDelay = Duration(seconds: 3);
-  static const _maxReconnectAttempts = 5;
+  static const _reconnectDelays = [
+    Duration(seconds: 1),
+    Duration(seconds: 2),
+    Duration(seconds: 3),
+    Duration(seconds: 5),
+  ];
   static const _maxProtocolBufferLength = 512;
 
   final _telemetryController = StreamController<VayaTelemetry>.broadcast();
@@ -300,9 +304,11 @@ class WheelchairBluetooth {
   }
 
   void _scheduleReconnect() {
-    if (_reconnectAttempts >= _maxReconnectAttempts) return;
     _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(_reconnectDelay, () async {
+    final delay = _reconnectDelays[_reconnectAttempts < _reconnectDelays.length
+        ? _reconnectAttempts
+        : _reconnectDelays.length - 1];
+    _reconnectTimer = Timer(delay, () async {
       if (!_shouldReconnect || _lastDevice == null) return;
       _reconnectAttempts++;
       final ok = await connect(_lastDevice!);

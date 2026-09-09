@@ -65,7 +65,10 @@ class _JoystickWidgetState extends State<JoystickWidget> {
                 onPanEnd: widget.enabled ? (_) => _release() : null,
                 onPanCancel: widget.enabled ? _release : null,
                 child: CustomPaint(
-                  painter: _JoystickPainter(_offset),
+                  painter: _JoystickPainter(
+                    _offset,
+                    lightMode: AppColors.isLightMode,
+                  ),
                   size: Size.infinite,
                 ),
               ),
@@ -82,8 +85,9 @@ class _JoystickWidgetState extends State<JoystickWidget> {
 
 class _JoystickPainter extends CustomPainter {
   final Offset offset;
+  final bool lightMode;
 
-  const _JoystickPainter(this.offset);
+  const _JoystickPainter(this.offset, {required this.lightMode});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -117,8 +121,10 @@ class _JoystickPainter extends CustomPainter {
       _drawArrow(canvas, arrow.tip(center, trackRadius), arrow);
     }
 
-    canvas.drawCircle(knob + const Offset(0, 8), knobRadius,
-        Paint()..color = Colors.black.withValues(alpha: 0.28));
+    if (!lightMode) {
+      canvas.drawCircle(knob + const Offset(0, 8), knobRadius,
+          Paint()..color = Colors.black.withValues(alpha: 0.28));
+    }
     canvas.drawCircle(knob, knobRadius, Paint()..color = AppColors.accent);
     canvas.drawCircle(knob, knobRadius * 0.55,
         Paint()..color = AppColors.accentDeep.withValues(alpha: 0.35));
@@ -155,7 +161,7 @@ class _JoystickPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_JoystickPainter oldDelegate) =>
-      oldDelegate.offset != offset;
+      oldDelegate.offset != offset || oldDelegate.lightMode != lightMode;
 }
 
 enum _Arrow {

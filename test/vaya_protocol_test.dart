@@ -16,6 +16,13 @@ void main() {
     expect(command.split('|').last, hasLength(4));
   });
 
+  test('safety reset command is sequenced and CRC protected', () {
+    final command = VayaProtocol.resetEmergencyStop(44);
+
+    expect(command, startsWith('V2|C|44|RESET_ESTOP|'));
+    expect(command.split('|').last, hasLength(4));
+  });
+
   test('passkey changes are sequenced and CRC protected', () {
     final command = VayaProtocol.changePasskey(44, '483921');
 
@@ -28,6 +35,17 @@ void main() {
 
     expect(command, startsWith('V2|C|45|ALLOW_NEW|1|'));
     expect(command.split('|').last, hasLength(4));
+  });
+
+  test('input source commands select exactly one joystick source', () {
+    expect(
+      VayaProtocol.setInputSource(46, physical: true),
+      startsWith('V2|C|46|INPUT|PHYSICAL|'),
+    );
+    expect(
+      VayaProtocol.setInputSource(47, physical: false),
+      startsWith('V2|C|47|INPUT|APP|'),
+    );
   });
 
   test('decodes a valid controller acknowledgement', () {

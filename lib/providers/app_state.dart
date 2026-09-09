@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/wheelchair_runtime.dart';
 import '../services/bluetooth_service.dart';
 import '../services/vaya_protocol.dart';
@@ -20,8 +21,11 @@ class AppState extends ChangeNotifier {
     _connectionSub = _bt.connectionStream.listen(_handleConnectionChange);
     _errorSub = _bt.errorStream.listen(_setError);
     _ackSub = _bt.ackStream.listen(_handleAck);
+    _preferencesReady = _loadPreferences();
     if (_bt.isConnected) unawaited(_restoreActiveConnection());
   }
+
+  late final Future<void> _preferencesReady;
 
   final _knownDevices = <BleDevice>[];
   final _nearbyDevices = <BleDevice>[];
@@ -45,7 +49,14 @@ class AppState extends ChangeNotifier {
   bool isChangingPasskey = false;
   bool isAuthenticating = false;
   bool isUpdatingWheelchairLock = false;
+  bool isResettingSafetyLock = false;
   bool isUpdatingNewDeviceTrust = false;
+  bool isUpdatingPhysicalJoystick = false;
+  bool isLightMode = false;
+  bool physicalJoystickEnabled = false;
+
+  static const _lightModePreferenceKey = 'light_mode_v1';
+  static const _physicalJoystickPreferenceKey = 'physical_joystick_v1';
 
   static const telemetryFreshness = Duration(seconds: 3);
 
@@ -134,7 +145,14 @@ class AppState extends ChangeNotifier {
       speedStatus == TelemetryStatus.current &&
       currentSpeed == 0 &&
       (controllerState == 'CONNECTED_IDLE' ||
-          controllerState == 'CONNECTED_LOCKED');
+          controllerState == 'CONNECTED_LOCKED' ||
+          controllerState == 'EMERGENCY_STOP');
+  bool get canResetSafetyLock =>
+      isConnected &&
+      protocolReady &&
+      emergencyStopActive &&
+      !isResettingSafetyLock &&
+      isWheelchairAtRest;
   bool get canChangeWheelchairLock =>
       isConnected &&
       protocolReady &&
@@ -147,6 +165,13 @@ class AppState extends ChangeNotifier {
       canChangeWheelchairLock &&
       supportsNewDeviceTrust &&
       !isUpdatingNewDeviceTrust;
+  bool get canChangePhysicalJoystick =>
+      isConnected &&
+      protocolReady &&
+      !isUpdatingPhysicalJoystick &&
+      !emergencyStopActive &&
+      !isCharging &&
+      faultCode == 'NONE';
   bool get supportsNewDeviceTrust {
     final parts = firmwareVersion.split('.');
     if (parts.length != 3) return false;
@@ -374,9 +399,7 @@ class AppState extends ChangeNotifier {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       requiresSystemPairingReset = true;
       systemPairingResetMessage =
-          'The wheelchair was removed, but this iPhone still has its old '
-          'Bluetooth pairing. Open Settings > Bluetooth, tap VAYA One, and '
-          'choose Forget This Device before connecting again.';
+          'Open Settings > Bluetooth, tap VAYA One, then choose Forget This Device.';
     }
     _safeNotify();
     return true;
@@ -412,6 +435,55 @@ class AppState extends ChangeNotifier {
       safetyBarrier: true,
     );
     return ack?.accepted ?? false;
+  }
+
+  Future<void> setLightMode(bool value) async {
+    if (isLightMode == value) return;
+    isLightMode = value;
+    _safeNotify();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_lightModePreferenceKey, value);
+  }
+
+  Future<bool> setPhysicalJoystickEnabled(bool value) async {
+    if (physicalJoystickEnabled == value) return true;
+    if (!canChangePhysicalJoystick) return false;
+    isUpdatingPhysicalJoystick = true;
+    _safeNotify();
+    try {
+      final acknowledgement = await _sendWithLeaseRecovery(
+        (sequence) => VayaProtocol.setInputSource(
+          sequence,
+          physical: value,
+        ),
+        safetyBarrier: true,
+      );
+      if (acknowledgement?.accepted != true) return false;
+      physicalJoystickEnabled = value;
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool(_physicalJoystickPreferenceKey, value);
+      return true;
+    } finally {
+      isUpdatingPhysicalJoystick = false;
+      _safeNotify();
+    }
+  }
+
+  Future<bool> resetSafetyLock() async {
+    if (!canResetSafetyLock) return false;
+    isResettingSafetyLock = true;
+    _safeNotify();
+    try {
+      final ack = await _sendConfirmed(
+        VayaProtocol.resetEmergencyStop,
+        retries: 1,
+        safetyBarrier: true,
+      );
+      return ack?.accepted ?? false;
+    } finally {
+      isResettingSafetyLock = false;
+      _safeNotify();
+    }
   }
 
   void requestEmergencyAssistance() {
@@ -527,9 +599,7 @@ class AppState extends ChangeNotifier {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       requiresSystemPairingReset = true;
       systemPairingResetMessage =
-          'The wheelchair passkey changed, but this iPhone still has the old '
-          'Bluetooth pairing. Open Settings > Bluetooth, tap VAYA One, and '
-          'choose Forget This Device before connecting with the new passkey.';
+          'Open Settings > Bluetooth, tap VAYA One, then choose Forget This Device.';
     }
     _safeNotify();
     return true;
@@ -555,6 +625,14 @@ class AppState extends ChangeNotifier {
 
   void setSensitivity(double value) {
     sensitivity = value.clamp(0.1, 1.0).toDouble();
+    _safeNotify();
+  }
+
+  Future<void> _loadPreferences() async {
+    final preferences = await SharedPreferences.getInstance();
+    isLightMode = preferences.getBool(_lightModePreferenceKey) ?? false;
+    physicalJoystickEnabled =
+        preferences.getBool(_physicalJoystickPreferenceKey) ?? false;
     _safeNotify();
   }
 
@@ -724,6 +802,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> _negotiateProtocol() async {
+    await _preferencesReady;
     // iOS can report the GATT connection before the ESP32 receives its
     // authenticated-session callback. Keep this one connection attempt alive
     // while the secure link settles instead of asking the caregiver to retry.
@@ -732,6 +811,14 @@ class AppState extends ChangeNotifier {
 
       final hello = await _sendConfirmed(VayaProtocol.hello, retries: 1);
       if (hello?.accepted == true && await _acquireControlLease()) {
+        final input = await _sendWithLeaseRecovery(
+          (sequence) => VayaProtocol.setInputSource(
+            sequence,
+            physical: physicalJoystickEnabled,
+          ),
+          safetyBarrier: true,
+        );
+        if (input?.accepted != true) return false;
         _startControlHeartbeat();
         return true;
       }
@@ -863,9 +950,7 @@ class AppState extends ChangeNotifier {
         lower.contains('apple-code: 14')) {
       requiresSystemPairingReset = true;
       systemPairingResetMessage ??=
-          'This iPhone has an old Bluetooth pairing for the wheelchair. Open '
-          'Settings > Bluetooth, tap VAYA One, and choose Forget This Device '
-          'before connecting again.';
+          'Open Settings > Bluetooth, tap VAYA One, then choose Forget This Device.';
     }
     if (message.contains('startScan') ||
         lower.contains('bluetooth must be turned on')) {
@@ -888,9 +973,7 @@ class AppState extends ChangeNotifier {
     final lower = message.toLowerCase();
     if (lower.contains('peer removed pairing information') ||
         lower.contains('apple-code: 14')) {
-      return 'This iPhone has an old Bluetooth pairing for the wheelchair. '
-          'Open Settings > Bluetooth, tap VAYA One, choose Forget This Device, '
-          'then return and connect again.';
+      return 'Open Settings > Bluetooth, tap VAYA One, then choose Forget This Device.';
     }
     if (lower.contains('bluetooth must be turned on') ||
         lower.contains('adapter') && lower.contains('off')) {

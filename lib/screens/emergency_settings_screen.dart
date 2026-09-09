@@ -83,7 +83,7 @@ class _EmergencySettingsScreenState extends State<EmergencySettingsScreen> {
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
                       children: [
-                        const Text(
+                        Text(
                           'Set who to contact when the SOS button is held. '
                           'The phone always asks for its final call or message confirmation.',
                           style: TextStyle(color: AppColors.textMuted),
@@ -139,7 +139,7 @@ class _EmergencySettingsScreenState extends State<EmergencySettingsScreen> {
                           child: Column(
                             children: [
                               if (_plan.contacts.isEmpty)
-                                const Align(
+                                Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
                                     'No contacts yet. SOS will call 112 by default.',

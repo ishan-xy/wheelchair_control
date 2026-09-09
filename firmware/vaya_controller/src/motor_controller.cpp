@@ -82,10 +82,23 @@ void MotorController::begin() {
   VAYA_LOG_INFO("MOTOR", "outputs initialized safe");
 }
 
-void MotorController::setDriveRequest(int16_t xMilli, int16_t yMilli) {
+void MotorController::setDriveRequest(int16_t xMilli, int16_t yMilli,
+                                       const char* source) {
   if (std::abs(xMilli) < config::kInputDeadZoneMilli) xMilli = 0;
   if (std::abs(yMilli) < config::kInputDeadZoneMilli) yMilli = 0;
   setMixedTargets(xMilli, yMilli);
+  if (source != lastLoggedSource_ || xMilli != lastLoggedX_ ||
+      yMilli != lastLoggedY_ || requestedLeft_ != lastLoggedLeft_ ||
+      requestedRight_ != lastLoggedRight_) {
+    VAYA_LOG_INFO("PWM", "source=%s x=%d y=%d left=%d right=%d limit=%d",
+                  source, xMilli, yMilli, requestedLeft_, requestedRight_,
+                  pwmLimit_);
+    lastLoggedSource_ = source;
+    lastLoggedX_ = xMilli;
+    lastLoggedY_ = yMilli;
+    lastLoggedLeft_ = requestedLeft_;
+    lastLoggedRight_ = requestedRight_;
+  }
 }
 
 void MotorController::setPwmLimit(int16_t limit) {
@@ -96,9 +109,18 @@ void MotorController::setPwmLimit(int16_t limit) {
       std::max<int16_t>(-pwmLimit_, std::min(requestedRight_, pwmLimit_));
 }
 
-void MotorController::requestStop() {
+void MotorController::requestStop(const char* source) {
+  const bool changed = requestedLeft_ != 0 || requestedRight_ != 0;
   requestedLeft_ = 0;
   requestedRight_ = 0;
+  if (changed) {
+    VAYA_LOG_INFO("PWM", "source=%s x=0 y=0 left=0 right=0", source);
+    lastLoggedSource_ = source;
+    lastLoggedX_ = 0;
+    lastLoggedY_ = 0;
+    lastLoggedLeft_ = 0;
+    lastLoggedRight_ = 0;
+  }
 }
 
 void MotorController::emergencyStop() {
@@ -190,7 +212,7 @@ void MotorController::logOutputIfChanged(uint32_t nowMs) {
 
   VAYA_LOG_INFO(
       "MOTOR",
-      "output L=%d(%s) R=%d(%s); target L=%d R=%d; limit=%d",
+      "applied L=%d(%s) R=%d(%s); target L=%d R=%d; limit=%d",
       currentLeft_, directionLabel(currentLeft_), currentRight_,
       directionLabel(currentRight_), requestedLeft_, requestedRight_,
       pwmLimit_);

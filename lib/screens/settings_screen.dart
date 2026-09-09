@@ -27,11 +27,22 @@ class SettingsScreen extends StatelessWidget {
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Connection and diagnostic information',
                 style: TextStyle(color: AppColors.textMuted),
               ),
               const SizedBox(height: 20),
+              _Section(
+                title: 'Appearance',
+                child: SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Light mode'),
+                  subtitle: const Text('Dark mode is the default.'),
+                  value: state.isLightMode,
+                  onChanged: (value) => state.setLightMode(value),
+                ),
+              ),
+              const SizedBox(height: 16),
               _Section(
                 title: 'Wheelchair',
                 child: Column(
@@ -48,6 +59,32 @@ class SettingsScreen extends StatelessWidget {
                               ? 'VAYA One'
                               : state.connectedDeviceName)
                           : 'Not connected',
+                    ),
+                    const Divider(),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Use physical joystick'),
+                      subtitle: Text(
+                        state.physicalJoystickEnabled
+                            ? 'Physical joystick active; app joystick is disabled.'
+                            : 'App joystick active; physical joystick is disabled. Switching sources stops output.',
+                      ),
+                      value: state.physicalJoystickEnabled,
+                      onChanged: state.canChangePhysicalJoystick
+                          ? (value) async {
+                              final changed =
+                                  await state.setPhysicalJoystickEnabled(value);
+                              if (!changed && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'The joystick source could not be changed. Check the connection and safety state.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          : null,
                     ),
                     const SizedBox(height: 16),
                     SizedBox(
@@ -135,7 +172,7 @@ class SettingsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
+                    Text(
                       'Choose who to call and message when SOS is requested.',
                       style: TextStyle(color: AppColors.textMuted),
                     ),
@@ -371,7 +408,7 @@ class _NewDeviceTrustControl extends StatelessWidget {
                   : state.allowNewDevices
                       ? 'New phones can pair during a physical pairing window.'
                       : 'Only trusted phones can reconnect.',
-          style: const TextStyle(color: AppColors.textMuted),
+          style: TextStyle(color: AppColors.textMuted),
         ),
         value: state.allowNewDevices,
         onChanged: enabled

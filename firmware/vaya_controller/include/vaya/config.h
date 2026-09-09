@@ -34,14 +34,6 @@
 #define VAYA_ALERT_INDICATOR_PIN -1
 #endif
 
-#ifndef VAYA_FEATURE_RESET_BUTTON
-#define VAYA_FEATURE_RESET_BUTTON 0
-#endif
-
-#ifndef VAYA_RESET_BUTTON_PIN
-#define VAYA_RESET_BUTTON_PIN -1
-#endif
-
 #ifndef VAYA_FEATURE_PAIRING_LED
 #define VAYA_FEATURE_PAIRING_LED 0
 #endif
@@ -64,6 +56,18 @@
 
 #ifndef VAYA_FEATURE_CHARGER_DETECTION
 #define VAYA_FEATURE_CHARGER_DETECTION 0
+#endif
+
+#ifndef VAYA_FEATURE_PHYSICAL_JOYSTICK
+#define VAYA_FEATURE_PHYSICAL_JOYSTICK 1
+#endif
+
+#ifndef VAYA_JOYSTICK_X_PIN
+#define VAYA_JOYSTICK_X_PIN 32
+#endif
+
+#ifndef VAYA_JOYSTICK_Y_PIN
+#define VAYA_JOYSTICK_Y_PIN 33
 #endif
 
 #ifndef VAYA_CHARGER_DETECT_PIN
@@ -97,11 +101,6 @@ inline constexpr bool kAlertIndicatorEnabled = VAYA_FEATURE_ALERT_INDICATOR != 0
 inline constexpr int8_t kAlertIndicatorPin = VAYA_ALERT_INDICATOR_PIN;
 inline constexpr bool kAlertIndicatorActiveHigh = true;
 inline constexpr uint16_t kAlertIndicatorPeriodMs = 250;
-inline constexpr bool kResetButtonEnabled = VAYA_FEATURE_RESET_BUTTON != 0;
-inline constexpr int8_t kResetButtonPin = VAYA_RESET_BUTTON_PIN;
-inline constexpr bool kResetButtonActiveLow = true;
-inline constexpr uint16_t kResetButtonDebounceMs = 35;
-inline constexpr uint32_t kResetButtonHoldMs = 3000;
 inline constexpr bool kPairingLedEnabled = VAYA_FEATURE_PAIRING_LED != 0;
 inline constexpr int8_t kPairingLedPin = VAYA_PAIRING_LED_PIN;
 inline constexpr bool kFaultLedEnabled = VAYA_FEATURE_FAULT_LED != 0;
@@ -122,6 +121,24 @@ inline constexpr bool kChargerDetectionEnabled =
 inline constexpr int8_t kChargerDetectPin = VAYA_CHARGER_DETECT_PIN;
 inline constexpr bool kChargerDetectActiveLow = true;
 inline constexpr uint16_t kChargerDebounceMs = 100;
+inline constexpr bool kPhysicalJoystickAvailable =
+    VAYA_FEATURE_PHYSICAL_JOYSTICK != 0;
+inline constexpr int8_t kJoystickXPin = VAYA_JOYSTICK_X_PIN;
+inline constexpr int8_t kJoystickYPin = VAYA_JOYSTICK_Y_PIN;
+inline constexpr uint16_t kJoystickSampleMs = 20;
+inline constexpr uint16_t kJoystickCenter = 2048;
+inline constexpr uint16_t kJoystickDeadZone = 140;
+inline constexpr uint16_t kJoystickCalibrationSamples = 50;
+// Measured HW-504 ranges in its installed orientation. VRx is travel and VRy
+// is steering; the neutral point is calibrated when physical mode is enabled.
+inline constexpr uint16_t kJoystickXMinimum = 0;
+inline constexpr uint16_t kJoystickXMaximum = 4000;
+inline constexpr uint16_t kJoystickYMinimum = 0;
+inline constexpr uint16_t kJoystickYMaximum = 4000;
+inline constexpr bool kJoystickAxesSwapped = true;
+// Higher VRx means front; higher VRy means right.
+inline constexpr bool kJoystickXInverted = false;
+inline constexpr bool kJoystickYInverted = false;
 inline constexpr char kServiceUuid[] = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
 inline constexpr char kRxUuid[] = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
 inline constexpr char kTxUuid[] = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
@@ -137,10 +154,6 @@ inline constexpr uint8_t kRightPwm = 27;
 inline constexpr bool kRightForwardDirectionHigh = false;
 inline constexpr uint8_t kBatteryAdcPin = 34;
 
-// Set to a valid GPIO wired to the monitored physical E-stop circuit.
-inline constexpr int8_t kPhysicalEstopPin = -1;
-inline constexpr bool kPhysicalEstopActiveLow = true;
-
 inline constexpr uint32_t kPwmFrequencyHz = 20000;
 inline constexpr uint8_t kPwmResolutionBits = 8;
 inline constexpr uint8_t kLeftPwmChannel = 0;
@@ -152,7 +165,7 @@ inline constexpr int16_t kInputDeadZoneMilli = 60;
 inline constexpr uint16_t kMotorUpdateMs = 10;
 inline constexpr uint16_t kMotorOutputLogPeriodMs = 100;
 inline constexpr uint16_t kDirectionDeadTimeMs = 60;
-inline constexpr uint16_t kPwmRampPerSecond = 500;
+inline constexpr uint16_t kPwmRampPerSecond = 300;
 
 // Mobile BLE scheduling can briefly jitter even while the link is healthy.
 // Disconnect events still stop immediately; this bounds stale motion commands.
@@ -193,13 +206,19 @@ static_assert(!kSosButtonEnabled || kSosButtonPin >= 0,
               "Set VAYA_SOS_BUTTON_PIN when enabling the SOS button.");
 static_assert(!kAlertIndicatorEnabled || kAlertIndicatorPin >= 0,
               "Set VAYA_ALERT_INDICATOR_PIN when enabling the alert indicator.");
-static_assert(!kResetButtonEnabled || kResetButtonPin >= 0,
-              "Set VAYA_RESET_BUTTON_PIN when enabling the reset button.");
 static_assert(!kPairingLedEnabled || kPairingLedPin >= 0,
               "Set VAYA_PAIRING_LED_PIN when enabling the pairing LED.");
 static_assert(!kFaultLedEnabled || kFaultLedPin >= 0,
               "Set VAYA_FAULT_LED_PIN when enabling the fault LED.");
 static_assert(!kChargerDetectionEnabled || kChargerDetectPin >= 0,
               "Set VAYA_CHARGER_DETECT_PIN when enabling charger detection.");
+static_assert(!kPhysicalJoystickAvailable ||
+                  (kJoystickXPin >= 0 && kJoystickYPin >= 0),
+              "Set both joystick ADC pins when enabling the physical joystick.");
+static_assert(kJoystickXMinimum < kJoystickCenter &&
+                  kJoystickCenter < kJoystickXMaximum &&
+                  kJoystickYMinimum < kJoystickCenter &&
+                  kJoystickCenter < kJoystickYMaximum,
+              "Joystick neutral must be inside each configured ADC range.");
 
 }  // namespace vaya::config

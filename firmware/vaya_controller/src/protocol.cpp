@@ -107,6 +107,15 @@ ErrorCode Protocol::parse(char* frame, Command& command) {
       return ErrorCode::kInvalidValue;
     }
     command.type = CommandType::kSetNewDevicePairing;
+  } else if (strcmp(tokens[3], "INPUT") == 0 && count == 5) {
+    if (strcmp(tokens[4], "APP") == 0) {
+      command.valueA = 0;
+    } else if (strcmp(tokens[4], "PHYSICAL") == 0) {
+      command.valueA = 1;
+    } else {
+      return ErrorCode::kInvalidValue;
+    }
+    command.type = CommandType::kSetInputSource;
   } else if (strcmp(tokens[3], "PING") == 0 && count == 4) {
     command.type = CommandType::kPing;
   } else {

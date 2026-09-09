@@ -15,15 +15,28 @@ The firmware always boots with motor PWM at zero. Movement requires:
 6. no fault or emergency-stop state.
 
 The 500 ms movement watchdog cannot be disabled. BLE disconnect, lease expiry,
-physical E-stop, or controller fault forces immediate zero PWM.
+or controller fault forces immediate zero PWM.
 
 The app never locks a moving wheelchair. `LOCK|1` is accepted only when motor
 PWM is zero and no drive target is pending; it is not a replacement for Stop or
 Emergency Stop. A new BLE connection always starts locked, and movement needs a
 deliberate app unlock after the chair reports stopped.
 
-Software is not a substitute for a hardwired, normally closed emergency-stop
-circuit that removes motor-driver enable/power independently of the ESP32.
+Emergency Stop is a software safety latch: it immediately commands zero PWM,
+locks the chair, and requires an authenticated app reset while stationary.
+
+### HW-504 physical joystick
+
+The firmware supports an HW-504 two-axis joystick. Connect common ground, VRx
+to ESP32 GPIO32, and VRy to GPIO33. The SW pin is unused. Power the module
+from 3.3 V so its analog outputs never exceed the ESP32 ADC limit; if it is
+powered from 5 V, add a voltage divider to each VR output before connecting it
+to the ESP32. The app's Settings switch selects either `APP` or `PHYSICAL`
+input; only the selected source can command movement, and the chair must be
+connected and free of an active safety fault to change it. Changing the source
+first forces motor output to zero. Keep the joystick centered while physical
+mode is enabled; the firmware samples its neutral position before accepting
+movement. The default source is the app joystick.
 
 ## Required production configuration
 
@@ -76,6 +89,9 @@ motor power isolated.
   `VAYA_CHARGER_DETECT_PIN=<gpio>`: locks the chair and stops motors whenever
   charging is detected. Movement and unlock commands are rejected until the
   charger is disconnected.
+- `VAYA_FEATURE_PHYSICAL_JOYSTICK` is enabled by default with GPIO32/GPIO33
+  above. Set it to `false` in the build configuration if the joystick is not
+  installed.
 
 ### Flash from the PlatformIO GUI
 
@@ -91,8 +107,7 @@ Disconnect motor power before flashing. If upload remains on `Connecting`,
 hold the ESP32 `BOOT` button, briefly press `EN/RESET`, and release `BOOT` when
 writing begins.
 
-Configure `kPhysicalEstopPin` and the real battery calibration in
-`include/vaya/config.h`. Battery telemetry intentionally reports
+Configure the real battery calibration in `include/vaya/config.h`. Battery telemetry intentionally reports
 `NOT_CONFIGURED` until calibration is supplied.
 
 Verify motor direction pins, stop/brake behavior, PWM polarity, driver enable
@@ -109,9 +124,12 @@ V2|C|43|LOCK|0|9D20
 V2|C|44|MOVE|0|500|3A10
 V2|C|45|STOP|0E3B
 V2|C|46|ESTOP|9F0A
-V2|C|47|FORGET|<crc>
-V2|C|48|PASSKEY|483921|<crc>
-V2|C|49|ALLOW_NEW|1|<crc>
+V2|C|47|RESET_ESTOP|<crc>
+V2|C|48|FORGET|<crc>
+V2|C|49|PASSKEY|483921|<crc>
+V2|C|50|ALLOW_NEW|1|<crc>
+V2|C|51|INPUT|APP|<crc>
+V2|C|52|INPUT|PHYSICAL|<crc>
 ```
 
 The final CRC values above are illustrative. Implementations must calculate
@@ -159,6 +177,6 @@ Settings > Bluetooth > VAYA One > Forget This Device before reconnecting.
 - Disconnect and app-kill tests at every speed and direction.
 - Delayed, duplicated, corrupt, oversized, and out-of-order packet tests.
 - BLE congestion and queue-overflow tests.
-- Physical E-stop and reset-interlock tests.
+- App emergency-stop and reset-interlock tests.
 - Brownout, reboot, sensor disconnect, motor-driver fault, and stuck-output tests.
 - Independent clinical, electrical, risk-management, and regulatory review.

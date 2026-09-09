@@ -129,6 +129,38 @@ class _ControlScreenState extends State<ControlScreen>
     );
   }
 
+  Future<void> _resetSafetyLock() async {
+    final state = context.read<AppState>();
+    final confirmed = await state.resetSafetyLock();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          confirmed
+              ? 'Safety lock reset. Unlock the wheelchair only when it is safe.'
+              : 'Safety reset was not confirmed. Keep the wheelchair stopped and upright, then try again.',
+        ),
+        backgroundColor: confirmed ? AppColors.surfaceHigh : AppColors.danger,
+      ),
+    );
+  }
+
+  Future<void> _unlock() async {
+    final state = context.read<AppState>();
+    final unlocked = await state.setWheelchairLocked(false);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          unlocked
+              ? 'Wheelchair unlocked. Movement controls are available.'
+              : 'The wheelchair did not confirm unlock. Keep it stopped and try again.',
+        ),
+        backgroundColor: unlocked ? AppColors.surfaceHigh : AppColors.warning,
+      ),
+    );
+  }
+
   void _requestEmergencyAssistance() {
     context.read<AppState>().requestEmergencyAssistance();
   }
@@ -184,29 +216,47 @@ class _ControlScreenState extends State<ControlScreen>
                       ),
                       SizedBox(height: compact ? 4 : 12),
                     ],
-                    SegmentedButton<DriveMode>(
-                      segments: [
-                        for (final mode in DriveMode.values)
-                          ButtonSegment(
-                            value: mode,
-                            label: Text(mode.label),
-                            icon: narrow
-                                ? null
-                                : Icon(
-                                    mode == DriveMode.indoor
-                                        ? Icons.home_outlined
-                                        : Icons.park_outlined,
-                                  ),
-                          ),
-                      ],
-                      selected: {_mode},
-                      onSelectionChanged: state.canDrive
-                          ? (selection) =>
-                              unawaited(_selectMode(selection.first))
-                          : null,
-                      showSelectedIcon: false,
-                    ),
-                    SizedBox(height: compact ? 6 : 12),
+                    if (state.isLocked && !state.emergencyStopActive) ...[
+                      SizedBox(
+                        height: compact ? 48 : 54,
+                        child: FilledButton.icon(
+                          onPressed:
+                              state.canChangeWheelchairLock ? _unlock : null,
+                          icon: state.isUpdatingWheelchairLock
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.lock_open_rounded),
+                          label: const Text('Unlock wheelchair'),
+                        ),
+                      ),
+                      SizedBox(height: compact ? 4 : 12),
+                    ],
+                    if (state.canDrive) ...[
+                      SegmentedButton<DriveMode>(
+                        segments: [
+                          for (final mode in DriveMode.values)
+                            ButtonSegment(
+                              value: mode,
+                              label: Text(mode.label),
+                              icon: narrow
+                                  ? null
+                                  : Icon(
+                                      mode == DriveMode.indoor
+                                          ? Icons.home_outlined
+                                          : Icons.park_outlined,
+                                    ),
+                            ),
+                        ],
+                        selected: {_mode},
+                        onSelectionChanged: (selection) =>
+                            unawaited(_selectMode(selection.first)),
+                        showSelectedIcon: false,
+                      ),
+                      SizedBox(height: compact ? 6 : 12),
+                    ],
                     Expanded(
                       child: Container(
                         decoration: BoxDecoration(
@@ -228,7 +278,9 @@ class _ControlScreenState extends State<ControlScreen>
                                   Expanded(
                                     child: Text(
                                       state.canDrive
-                                          ? 'Hold and move to drive'
+                                          ? state.physicalJoystickEnabled
+                                              ? 'HW-504 physical joystick active'
+                                              : 'Hold and move to drive'
                                           : state.isCharging
                                               ? 'Charging: movement controls are disabled'
                                               : state.isConnected
@@ -236,7 +288,7 @@ class _ControlScreenState extends State<ControlScreen>
                                                   : 'Connect to enable movement',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: AppColors.textMuted,
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -258,16 +310,19 @@ class _ControlScreenState extends State<ControlScreen>
                             const SizedBox(height: 4),
                             Expanded(
                               child: JoystickWidget(
-                                enabled: state.canDrive,
+                                enabled: state.canDrive &&
+                                    !state.physicalJoystickEnabled,
                                 onMove: _onMove,
                                 onRelease: () => _stop(silent: true),
                               ),
                             ),
                             Row(
                               children: [
-                                const Expanded(
+                                Expanded(
                                   child: Text(
-                                    'Joystick sensitivity',
+                                    state.physicalJoystickEnabled
+                                        ? 'Physical joystick sensitivity is set in firmware'
+                                        : 'Joystick sensitivity',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style:
@@ -276,7 +331,9 @@ class _ControlScreenState extends State<ControlScreen>
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  '${(state.sensitivity * 100).round()}%',
+                                  state.physicalJoystickEnabled
+                                      ? '—'
+                                      : '${(state.sensitivity * 100).round()}%',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -290,8 +347,10 @@ class _ControlScreenState extends State<ControlScreen>
                               divisions: 9,
                               label:
                                   '${(state.sensitivity * 100).round()} percent',
-                              onChanged:
-                                  state.canDrive ? state.setSensitivity : null,
+                              onChanged: state.canDrive &&
+                                      !state.physicalJoystickEnabled
+                                  ? state.setSensitivity
+                                  : null,
                             ),
                           ],
                         ),
@@ -301,9 +360,13 @@ class _ControlScreenState extends State<ControlScreen>
                     SizedBox(
                       height: compact ? 54 : 62,
                       child: FilledButton.icon(
-                        onPressed: state.isConnected && state.protocolReady
-                            ? _emergencyStop
-                            : null,
+                        onPressed: state.emergencyStopActive
+                            ? (state.canResetSafetyLock
+                                ? _resetSafetyLock
+                                : null)
+                            : state.isConnected && state.protocolReady
+                                ? _emergencyStop
+                                : null,
                         style: FilledButton.styleFrom(
                           backgroundColor: AppColors.danger,
                           foregroundColor: Colors.white,
@@ -313,9 +376,13 @@ class _ControlScreenState extends State<ControlScreen>
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        icon: const Icon(Icons.stop_circle_outlined),
-                        label: const Text(
-                          'EMERGENCY STOP',
+                        icon: Icon(state.emergencyStopActive
+                            ? Icons.restart_alt_rounded
+                            : Icons.stop_circle_outlined),
+                        label: Text(
+                          state.emergencyStopActive
+                              ? 'RESET SAFETY LOCK'
+                              : 'EMERGENCY STOP',
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w900,
@@ -458,7 +525,9 @@ class _SafetyWarning extends StatelessWidget {
             Expanded(
               child: Text(
                 state.emergencyStopActive
-                    ? 'Emergency stop is active. Use the physical reset procedure.'
+                    ? state.isWheelchairAtRest
+                        ? 'Emergency stop is active. Reset the safety lock only after confirming it is safe.'
+                        : 'Emergency stop is active. Wait until the wheelchair is completely stopped before resetting.'
                     : state.isCharging
                         ? 'Charging is connected. Movement controls are disabled.'
                         : state.sosActive
@@ -466,7 +535,7 @@ class _SafetyWarning extends StatelessWidget {
                             : state.isLocked
                                 ? short
                                     ? 'Wheelchair is locked.'
-                                    : 'Wheelchair is locked. Use Status to unlock it when it is safe to drive.'
+                                    : 'Wheelchair is locked. Unlock it here when it is safe to drive.'
                                 : state.faultCode == 'COMMAND_TIMEOUT'
                                     ? 'Control signal was interrupted. Release the joystick while control is restored.'
                                     : state.faultCode != 'NONE'

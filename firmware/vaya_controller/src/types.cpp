@@ -36,7 +36,6 @@ const char* toString(FaultCode value) {
     case FaultCode::kRxOverflow: return "RX_OVERFLOW";
     case FaultCode::kMotorOutput: return "MOTOR_OUTPUT";
     case FaultCode::kBatterySensor: return "BATTERY_SENSOR";
-    case FaultCode::kPhysicalEmergencyStop: return "PHYSICAL_ESTOP";
     case FaultCode::kSecurityConfiguration: return "SECURITY_CONFIG";
     case FaultCode::kToppleDetected: return "TOPPLE_DETECTED";
     case FaultCode::kSosRequested: return "SOS_REQUESTED";
@@ -57,12 +56,12 @@ const char* toString(ErrorCode value) {
     case ErrorCode::kControlRequired: return "CONTROL_REQUIRED";
     case ErrorCode::kLocked: return "LOCKED";
     case ErrorCode::kEmergencyStopActive: return "EMERGENCY_STOP_ACTIVE";
-    case ErrorCode::kPhysicalEstopRequired: return "PHYSICAL_ESTOP_REQUIRED";
     case ErrorCode::kFaultActive: return "FAULT_ACTIVE";
     case ErrorCode::kQueueFull: return "QUEUE_FULL";
     case ErrorCode::kPasskeyPolicyFailed: return "PASSKEY_POLICY_FAILED";
     case ErrorCode::kSecurityStorageFailed: return "SECURITY_STORAGE_FAILED";
     case ErrorCode::kChargingActive: return "CHARGING_ACTIVE";
+    case ErrorCode::kInputSourceActive: return "INPUT_SOURCE_ACTIVE";
   }
   return "UNKNOWN";
 }

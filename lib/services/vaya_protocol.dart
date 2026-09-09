@@ -68,6 +68,8 @@ class VayaProtocol {
       );
   static String stop(int sequence) => _command(sequence, 'STOP');
   static String emergencyStop(int sequence) => _command(sequence, 'ESTOP');
+  static String resetEmergencyStop(int sequence) =>
+      _command(sequence, 'RESET_ESTOP');
   static String setMode(int sequence, {required bool indoor}) =>
       _command(sequence, 'MODE|${indoor ? 'INDOOR' : 'OUTDOOR'}');
   static String setLimit(int sequence, int pwm) =>
@@ -77,6 +79,8 @@ class VayaProtocol {
       _command(sequence, 'PASSKEY|$passkey');
   static String setAllowNewDevices(int sequence, bool allowed) =>
       _command(sequence, 'ALLOW_NEW|${allowed ? 1 : 0}');
+  static String setInputSource(int sequence, {required bool physical}) =>
+      _command(sequence, 'INPUT|${physical ? 'PHYSICAL' : 'APP'}');
   static String ping(int sequence) => _command(sequence, 'PING');
 
   static Object? decode(String frame) {

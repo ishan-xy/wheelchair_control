@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'app_colors.dart';
 
 class AppTypography {
-  static TextTheme get textTheme => const TextTheme(
+  static TextTheme get textTheme => TextTheme(
         displayLarge: TextStyle(
           fontSize: 48,
           height: 1,
@@ -61,10 +61,10 @@ class AppTypography {
         ),
       );
 
-  static const overline = TextStyle(
-    color: AppColors.textMuted,
-    fontSize: 13,
-    fontWeight: FontWeight.w800,
-    letterSpacing: 0,
-  );
+  static TextStyle get overline => TextStyle(
+        color: AppColors.textMuted,
+        fontSize: 13,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0,
+      );
 }

@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wheelchair_control/app/main_nav.dart';
 import 'package:wheelchair_control/core/theme/app_theme.dart';
 import 'package:wheelchair_control/core/widgets/battery_indicator.dart';
 import 'package:wheelchair_control/providers/app_state.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
   final state = AppState();
 
   Future<void> pumpAtSize(
@@ -24,7 +27,7 @@ void main() {
       ChangeNotifierProvider.value(
         value: state,
         child: MaterialApp(
-          theme: AppTheme.dark,
+          theme: AppTheme.current,
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(context).copyWith(
               textScaler: TextScaler.linear(textScale),
@@ -77,7 +80,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('status exposes a clear wheelchair lock state and action',
+  testWidgets('control exposes a clear wheelchair unlock action',
+      (tester) async {
+    await pumpAtSize(
+      tester,
+      size: const Size(390, 844),
+      textScale: 1,
+    );
+
+    expect(find.textContaining('Wheelchair is locked'), findsOneWidget);
+    expect(find.text('Unlock wheelchair'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('status stacks long mobile values without overflow',
       (tester) async {
     await pumpAtSize(
       tester,
@@ -88,9 +104,7 @@ void main() {
     await tester.tap(find.text('Status'));
     await tester.pump();
 
-    expect(find.text('Wheelchair lock'), findsOneWidget);
-    expect(find.text('Locked'), findsOneWidget);
-    expect(find.text('Unlock wheelchair'), findsOneWidget);
+    expect(find.text('Pre-drive check'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

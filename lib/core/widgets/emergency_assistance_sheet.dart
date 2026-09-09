@@ -126,7 +126,7 @@ class _EmergencyAssistanceSheetState extends State<_EmergencyAssistanceSheet> {
                       EmergencySignalSource.app =>
                         'Emergency assistance was requested from this phone.',
                     },
-                    style: const TextStyle(color: AppColors.textMuted),
+                    style: TextStyle(color: AppColors.textMuted),
                   ),
                   const SizedBox(height: 10),
                   Text(

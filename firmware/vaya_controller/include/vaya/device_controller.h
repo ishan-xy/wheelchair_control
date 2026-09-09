@@ -15,12 +15,14 @@ class DeviceController {
   void onDisconnected();
   void setCharging(bool charging);
   ErrorCode handle(const Command& command, uint32_t nowMs);
+  ErrorCode handlePhysicalMove(int16_t xMilli, int16_t yMilli,
+                               uint32_t nowMs);
   void update(uint32_t nowMs);
   void setStartupFault(FaultCode fault);
   void setSafetyStartupReady(bool ready);
   void raiseFault(FaultCode fault);
   void latchSafetyEvent(FaultCode fault);
-  bool resetSafetyEvent(bool toppleResetSafe);
+  ErrorCode resetSafetyEvent(const Command& command, bool toppleResetSafe);
 
   DeviceState state() const;
   FaultCode fault() const;
@@ -30,9 +32,9 @@ class DeviceController {
   bool canOpenPairingWindow() const;
   bool canEnterStandby() const;
   bool charging() const;
+  bool physicalJoystickEnabled() const;
 
  private:
-  bool physicalEstopAsserted() const;
   bool controlLeaseValid(uint32_t nowMs) const;
   bool isDuplicateIdempotent(const Command& command) const;
   void transition(DeviceState next);
@@ -46,6 +48,7 @@ class DeviceController {
   bool emergencyStop_{false};
   bool safetyStartupReady_{true};
   bool charging_{false};
+  bool physicalJoystickEnabled_{false};
   bool protocolNegotiated_{false};
   uint32_t lastSequence_{0};
   CommandType lastCommandType_{CommandType::kInvalid};

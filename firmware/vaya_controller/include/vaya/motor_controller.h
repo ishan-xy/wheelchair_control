@@ -10,9 +10,10 @@ class MotorController {
  public:
   MotorController();
   void begin();
-  void setDriveRequest(int16_t xMilli, int16_t yMilli);
+  void setDriveRequest(int16_t xMilli, int16_t yMilli,
+                       const char* source = "UNKNOWN");
   void setPwmLimit(int16_t limit);
-  void requestStop();
+  void requestStop(const char* source = "SYSTEM");
   void emergencyStop();
   void update(uint32_t nowMs);
   MotorSnapshot snapshot() const;
@@ -52,6 +53,9 @@ class MotorController {
   uint32_t lastUpdateMs_{0};
   uint32_t lastOutputLogMs_{0};
   uint32_t directionChangeAllowedMs_{0};
+  const char* lastLoggedSource_{nullptr};
+  int16_t lastLoggedX_{0};
+  int16_t lastLoggedY_{0};
 };
 
 }  // namespace vaya

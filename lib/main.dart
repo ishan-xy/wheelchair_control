@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/app_colors.dart';
 import 'providers/app_state.dart';
 import 'screens/onboarding_screen.dart';
 
@@ -15,10 +16,14 @@ class WheelchairApp extends StatelessWidget {
   const WheelchairApp({super.key});
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        title: 'VAYA Connect',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.dark,
-        home: const OnboardingScreen(),
-      );
+  Widget build(BuildContext context) {
+    final lightMode = context.watch<AppState>().isLightMode;
+    AppColors.useLightMode(lightMode);
+    return MaterialApp(
+      title: 'VAYA Connect',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.current,
+      home: const OnboardingScreen(),
+    );
+  }
 }
