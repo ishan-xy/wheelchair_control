@@ -6,8 +6,7 @@ App Demo
 https://github.com/user-attachments/assets/90eca3c9-ac23-4b84-bc10-113edfcc4c14
 
 Final Working Video
-[Video Placeholder]
-
+[![Watch the video](https://youtube.com/shorts/QyPg3e10AqY)](https://youtube.com/shorts/QyPg3e10AqY)
 
 Fabrication Stages
 Final Cad
