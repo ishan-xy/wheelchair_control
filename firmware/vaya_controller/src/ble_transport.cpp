@@ -213,7 +213,20 @@ uint8_t BleTransport::trustedDeviceCount() const {
 
 uint32_t BleTransport::passkey() const { return passkeyStore_.passkey(); }
 
+void BleTransport::ensureAdvertising(uint32_t nowMs) {
+  if (connected_ || standby_) return;
+  if (NimBLEDevice::getAdvertising()->isAdvertising()) return;
+  if (static_cast<int32_t>(nowMs - nextAdvertisingRetryMs_) < 0) return;
+  if (!NimBLEDevice::startAdvertising()) {
+    nextAdvertisingRetryMs_ = nowMs + 200;
+    VAYA_LOG_WARNING("BLE", "advertising restart failed; retrying");
+    return;
+  }
+  VAYA_LOG_INFO("BLE", "advertising resumed");
+}
+
 void BleTransport::update(uint32_t nowMs) {
+  ensureAdvertising(nowMs);
   if (pairingWindowUntilMs_ != 0 &&
       static_cast<int32_t>(nowMs - pairingWindowUntilMs_) >= 0) {
     pairingWindowUntilMs_ = 0;

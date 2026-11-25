@@ -35,7 +35,8 @@ class MotorController {
     bool forwardDirectionHigh_;
   };
 
-  static int16_t approach(int16_t current, int16_t target, int16_t step);
+  static float approach(float current, float target, float step);
+  static float calculateStep(float current, int16_t target, float elapsedSec);
   void setMixedTargets(int16_t xMilli, int16_t yMilli);
   void logOutputIfChanged(uint32_t nowMs);
 
@@ -43,8 +44,8 @@ class MotorController {
   MotorOutput right_;
   int16_t requestedLeft_{0};
   int16_t requestedRight_{0};
-  int16_t currentLeft_{0};
-  int16_t currentRight_{0};
+  float currentLeft_{0.0F};
+  float currentRight_{0.0F};
   int16_t pwmLimit_{0};
   int16_t lastLoggedLeft_{0};
   int16_t lastLoggedRight_{0};
@@ -56,6 +57,8 @@ class MotorController {
   const char* lastLoggedSource_{nullptr};
   int16_t lastLoggedX_{0};
   int16_t lastLoggedY_{0};
+  int16_t lastLoggedCommandLeft_{0};
+  int16_t lastLoggedCommandRight_{0};
 };
 
 }  // namespace vaya

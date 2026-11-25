@@ -43,6 +43,7 @@ class BleTransport {
 
  private:
   bool enqueue(const char* data, size_t length);
+  void ensureAdvertising(uint32_t nowMs);
 
   PasskeyStore& passkeyStore_;
   PairingPolicyStore& pairingPolicy_;
@@ -64,6 +65,7 @@ class BleTransport {
   bool newPeerAuthorizedAtConnection_{false};
   uint32_t pairingWindowUntilMs_{0};
   bool standby_{false};
+  uint32_t nextAdvertisingRetryMs_{0};
   RxFrame queue_[config::kRxQueueDepth]{};
   volatile uint8_t head_{0};
   volatile uint8_t tail_{0};

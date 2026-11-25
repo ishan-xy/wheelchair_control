@@ -126,11 +126,14 @@ inline constexpr bool kPhysicalJoystickAvailable =
 inline constexpr int8_t kJoystickXPin = VAYA_JOYSTICK_X_PIN;
 inline constexpr int8_t kJoystickYPin = VAYA_JOYSTICK_Y_PIN;
 inline constexpr uint16_t kJoystickSampleMs = 20;
-inline constexpr uint16_t kJoystickCenter = 2048;
-inline constexpr uint16_t kJoystickDeadZone = 140;
-inline constexpr uint16_t kJoystickCalibrationSamples = 50;
+inline constexpr uint16_t kJoystickActivationDelayMs = 750;
+inline constexpr uint16_t kJoystickStoppedCooldownMs = 1500;
+// Fixed neutral values for the installed HW-504. The 1750-1950 range is idle.
+inline constexpr uint16_t kJoystickXCenter = 1850;
+inline constexpr uint16_t kJoystickYCenter = 1850;
+inline constexpr uint16_t kJoystickDeadZone = 150;
 // Measured HW-504 ranges in its installed orientation. VRx is travel and VRy
-// is steering; the neutral point is calibrated when physical mode is enabled.
+// is steering.
 inline constexpr uint16_t kJoystickXMinimum = 0;
 inline constexpr uint16_t kJoystickXMaximum = 4000;
 inline constexpr uint16_t kJoystickYMinimum = 0;
@@ -161,11 +164,15 @@ inline constexpr uint8_t kRightPwmChannel = 1;
 inline constexpr int16_t kIndoorPwmLimit = 125;
 inline constexpr int16_t kOutdoorPwmLimit = 255;
 inline constexpr int16_t kDefaultPwmLimit = kIndoorPwmLimit;
+inline constexpr int16_t kPhysicalJoystickPwmLimit = 40;  // 30% of 255
 inline constexpr int16_t kInputDeadZoneMilli = 60;
 inline constexpr uint16_t kMotorUpdateMs = 10;
 inline constexpr uint16_t kMotorOutputLogPeriodMs = 100;
 inline constexpr uint16_t kDirectionDeadTimeMs = 60;
-inline constexpr uint16_t kPwmRampPerSecond = 300;
+inline constexpr uint16_t kPwmRampPerSecond = 250;
+inline constexpr uint16_t kPwmInitialRampPerSecond = 35;
+inline constexpr uint16_t kPwmDecelPerSecond = 350;
+inline constexpr float kPwmAccelerationExponent = 2.0F;
 
 // Mobile BLE scheduling can briefly jitter even while the link is healthy.
 // Disconnect events still stop immediately; this bounds stale motion commands.
@@ -198,6 +205,13 @@ static_assert(kMotionWatchdogMs < kControlLeaseMs);
 static_assert(kDefaultPwmLimit <= 255);
 static_assert(kIndoorPwmLimit <= 255);
 static_assert(kOutdoorPwmLimit <= 255);
+static_assert(kPhysicalJoystickPwmLimit > 0 && kPhysicalJoystickPwmLimit <= 255);
+static_assert(kPwmInitialRampPerSecond > 0 &&
+                  kPwmInitialRampPerSecond <= kPwmRampPerSecond,
+              "Initial ramp must be positive and not exceed maximum ramp.");
+static_assert(kPwmDecelPerSecond > 0, "Decel rate must be positive.");
+static_assert(kPwmAccelerationExponent >= 1.0F,
+              "Acceleration exponent must be at least 1.0.");
 static_assert(!kPairingButtonEnabled || kPairWakeButtonPin >= 0,
               "Set VAYA_PAIR_WAKE_BUTTON_PIN when enabling the Pair / Wake button.");
 static_assert(!kAutoStandbyEnabled || kPairingButtonEnabled,
@@ -215,10 +229,10 @@ static_assert(!kChargerDetectionEnabled || kChargerDetectPin >= 0,
 static_assert(!kPhysicalJoystickAvailable ||
                   (kJoystickXPin >= 0 && kJoystickYPin >= 0),
               "Set both joystick ADC pins when enabling the physical joystick.");
-static_assert(kJoystickXMinimum < kJoystickCenter &&
-                  kJoystickCenter < kJoystickXMaximum &&
-                  kJoystickYMinimum < kJoystickCenter &&
-                  kJoystickCenter < kJoystickYMaximum,
+static_assert(kJoystickXMinimum < kJoystickXCenter &&
+                  kJoystickXCenter < kJoystickXMaximum &&
+                  kJoystickYMinimum < kJoystickYCenter &&
+                  kJoystickYCenter < kJoystickYMaximum,
               "Joystick neutral must be inside each configured ADC range.");
 
 }  // namespace vaya::config

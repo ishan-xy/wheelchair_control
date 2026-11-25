@@ -1,6 +1,7 @@
 #include "vaya/motor_controller.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 #include "vaya/config.h"
@@ -88,16 +89,17 @@ void MotorController::setDriveRequest(int16_t xMilli, int16_t yMilli,
   if (std::abs(yMilli) < config::kInputDeadZoneMilli) yMilli = 0;
   setMixedTargets(xMilli, yMilli);
   if (source != lastLoggedSource_ || xMilli != lastLoggedX_ ||
-      yMilli != lastLoggedY_ || requestedLeft_ != lastLoggedLeft_ ||
-      requestedRight_ != lastLoggedRight_) {
+      yMilli != lastLoggedY_ ||
+      requestedLeft_ != lastLoggedCommandLeft_ ||
+      requestedRight_ != lastLoggedCommandRight_) {
     VAYA_LOG_INFO("PWM", "source=%s x=%d y=%d left=%d right=%d limit=%d",
                   source, xMilli, yMilli, requestedLeft_, requestedRight_,
                   pwmLimit_);
     lastLoggedSource_ = source;
     lastLoggedX_ = xMilli;
     lastLoggedY_ = yMilli;
-    lastLoggedLeft_ = requestedLeft_;
-    lastLoggedRight_ = requestedRight_;
+    lastLoggedCommandLeft_ = requestedLeft_;
+    lastLoggedCommandRight_ = requestedRight_;
   }
 }
 
@@ -118,70 +120,101 @@ void MotorController::requestStop(const char* source) {
     lastLoggedSource_ = source;
     lastLoggedX_ = 0;
     lastLoggedY_ = 0;
-    lastLoggedLeft_ = 0;
-    lastLoggedRight_ = 0;
+    lastLoggedCommandLeft_ = 0;
+    lastLoggedCommandRight_ = 0;
   }
 }
 
 void MotorController::emergencyStop() {
   requestedLeft_ = 0;
   requestedRight_ = 0;
-  currentLeft_ = 0;
-  currentRight_ = 0;
+  currentLeft_ = 0.0F;
+  currentRight_ = 0.0F;
   left_.stop();
   right_.stop();
 }
 
+float MotorController::calculateStep(float current, int16_t target,
+                                     float elapsedSec) {
+  const float currentAbs = std::abs(current);
+  const float targetAbs = static_cast<float>(std::abs(target));
+
+  // Accelerating: increasing speed away from zero in the commanded direction
+  const bool sameDirection =
+      (current > 0.0F && target > 0) || (current < 0.0F && target < 0) ||
+      (currentAbs < 0.001F);
+  const bool accelerating = sameDirection && (targetAbs > currentAbs);
+
+  if (accelerating && targetAbs > 0.001F) {
+    const float progress = std::min(1.0F, currentAbs / targetAbs);
+    const float curvedProgress =
+        std::pow(progress, config::kPwmAccelerationExponent);
+    const float rampRate =
+        static_cast<float>(config::kPwmInitialRampPerSecond) +
+        static_cast<float>(config::kPwmRampPerSecond -
+                           config::kPwmInitialRampPerSecond) *
+            curvedProgress;
+    return rampRate * elapsedSec;
+  }
+
+  // Decelerating / braking / return to neutral: fast linear deceleration
+  return static_cast<float>(config::kPwmDecelPerSecond) * elapsedSec;
+}
+
 void MotorController::update(uint32_t nowMs) {
   if (nowMs - lastUpdateMs_ < config::kMotorUpdateMs) return;
-  const uint32_t elapsed =
+  const uint32_t elapsedMs =
       lastUpdateMs_ == 0 ? config::kMotorUpdateMs : nowMs - lastUpdateMs_;
   lastUpdateMs_ = nowMs;
-  const int16_t step = std::max<int16_t>(
-      1, static_cast<int16_t>((config::kPwmRampPerSecond * elapsed) / 1000U));
+  const float elapsedSec = static_cast<float>(elapsedMs) / 1000.0F;
 
   const bool reversing =
-      (currentLeft_ != 0 && requestedLeft_ != 0 &&
-       (currentLeft_ > 0) != (requestedLeft_ > 0)) ||
-      (currentRight_ != 0 && requestedRight_ != 0 &&
-       (currentRight_ > 0) != (requestedRight_ > 0));
+      (std::abs(currentLeft_) > 0.001F && requestedLeft_ != 0 &&
+       (currentLeft_ > 0.0F) != (requestedLeft_ > 0)) ||
+      (std::abs(currentRight_) > 0.001F && requestedRight_ != 0 &&
+       (currentRight_ > 0.0F) != (requestedRight_ > 0));
 
-  int16_t leftTarget = reversing ? 0 : requestedLeft_;
-  int16_t rightTarget = reversing ? 0 : requestedRight_;
-  currentLeft_ = approach(currentLeft_, leftTarget, step);
-  currentRight_ = approach(currentRight_, rightTarget, step);
+  const int16_t leftTarget = reversing ? 0 : requestedLeft_;
+  const int16_t rightTarget = reversing ? 0 : requestedRight_;
 
-  if (reversing && currentLeft_ == 0 && currentRight_ == 0 &&
-      directionChangeAllowedMs_ == 0) {
+  const float leftStep = calculateStep(currentLeft_, leftTarget, elapsedSec);
+  const float rightStep = calculateStep(currentRight_, rightTarget, elapsedSec);
+
+  currentLeft_ = approach(currentLeft_, static_cast<float>(leftTarget), leftStep);
+  currentRight_ = approach(currentRight_, static_cast<float>(rightTarget), rightStep);
+
+  if (reversing && std::abs(currentLeft_) < 0.001F &&
+      std::abs(currentRight_) < 0.001F && directionChangeAllowedMs_ == 0) {
     directionChangeAllowedMs_ = nowMs + config::kDirectionDeadTimeMs;
   }
   if (directionChangeAllowedMs_ != 0) {
     if (static_cast<int32_t>(nowMs - directionChangeAllowedMs_) < 0) {
-      currentLeft_ = 0;
-      currentRight_ = 0;
+      currentLeft_ = 0.0F;
+      currentRight_ = 0.0F;
     } else {
       directionChangeAllowedMs_ = 0;
     }
   }
 
-  left_.write(currentLeft_);
-  right_.write(currentRight_);
+  const int16_t outLeft = static_cast<int16_t>(std::round(currentLeft_));
+  const int16_t outRight = static_cast<int16_t>(std::round(currentRight_));
+  left_.write(outLeft);
+  right_.write(outRight);
   logOutputIfChanged(nowMs);
 }
 
 MotorSnapshot MotorController::snapshot() const {
   MotorSnapshot value;
-  value.leftPwm = currentLeft_;
-  value.rightPwm = currentRight_;
+  value.leftPwm = static_cast<int16_t>(std::round(currentLeft_));
+  value.rightPwm = static_cast<int16_t>(std::round(currentRight_));
   value.motionRequested = requestedLeft_ != 0 || requestedRight_ != 0;
-  value.atRest = currentLeft_ == 0 && currentRight_ == 0;
+  value.atRest = (value.leftPwm == 0 && value.rightPwm == 0);
   return value;
 }
 
-int16_t MotorController::approach(int16_t current, int16_t target,
-                                  int16_t step) {
-  if (current < target) return std::min<int16_t>(target, current + step);
-  if (current > target) return std::max<int16_t>(target, current - step);
+float MotorController::approach(float current, float target, float step) {
+  if (current < target) return std::min(target, current + step);
+  if (current > target) return std::max(target, current - step);
   return current;
 }
 
@@ -197,13 +230,15 @@ void MotorController::setMixedTargets(int16_t xMilli, int16_t yMilli) {
 }
 
 void MotorController::logOutputIfChanged(uint32_t nowMs) {
+  const int16_t outLeft = static_cast<int16_t>(std::round(currentLeft_));
+  const int16_t outRight = static_cast<int16_t>(std::round(currentRight_));
   const bool changed =
-      currentLeft_ != lastLoggedLeft_ || currentRight_ != lastLoggedRight_ ||
+      outLeft != lastLoggedLeft_ || outRight != lastLoggedRight_ ||
       requestedLeft_ != lastLoggedRequestedLeft_ ||
       requestedRight_ != lastLoggedRequestedRight_;
   if (!changed) return;
 
-  const bool justStopped = currentLeft_ == 0 && currentRight_ == 0 &&
+  const bool justStopped = outLeft == 0 && outRight == 0 &&
                            (lastLoggedLeft_ != 0 || lastLoggedRight_ != 0);
   if (!justStopped &&
       nowMs - lastOutputLogMs_ < config::kMotorOutputLogPeriodMs) {
@@ -213,11 +248,11 @@ void MotorController::logOutputIfChanged(uint32_t nowMs) {
   VAYA_LOG_INFO(
       "MOTOR",
       "applied L=%d(%s) R=%d(%s); target L=%d R=%d; limit=%d",
-      currentLeft_, directionLabel(currentLeft_), currentRight_,
-      directionLabel(currentRight_), requestedLeft_, requestedRight_,
+      outLeft, directionLabel(outLeft), outRight,
+      directionLabel(outRight), requestedLeft_, requestedRight_,
       pwmLimit_);
-  lastLoggedLeft_ = currentLeft_;
-  lastLoggedRight_ = currentRight_;
+  lastLoggedLeft_ = outLeft;
+  lastLoggedRight_ = outRight;
   lastLoggedRequestedLeft_ = requestedLeft_;
   lastLoggedRequestedRight_ = requestedRight_;
   lastOutputLogMs_ = nowMs;

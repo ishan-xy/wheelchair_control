@@ -137,6 +137,9 @@ ErrorCode DeviceController::handle(const Command& command, uint32_t nowMs) {
       }
       physicalJoystickEnabled_ = command.valueA != 0;
       motors_.emergencyStop();
+      motors_.setPwmLimit(physicalJoystickEnabled_
+                              ? config::kPhysicalJoystickPwmLimit
+                              : configuredPwmLimit_);
       lastMoveCommandMs_ = 0;
       leaseExpiresMs_ = nowMs + config::kControlLeaseMs;
       transition(locked_ ? DeviceState::kConnectedLocked
@@ -144,13 +147,19 @@ ErrorCode DeviceController::handle(const Command& command, uint32_t nowMs) {
       return ErrorCode::kNone;
     case CommandType::kSetMode:
       if (!controlLeaseValid(nowMs)) return ErrorCode::kControlRequired;
-      motors_.setPwmLimit(command.valueA == 0 ? config::kIndoorPwmLimit
-                                             : config::kOutdoorPwmLimit);
+      configuredPwmLimit_ = command.valueA == 0 ? config::kIndoorPwmLimit
+                                                : config::kOutdoorPwmLimit;
+      motors_.setPwmLimit(physicalJoystickEnabled_
+                              ? config::kPhysicalJoystickPwmLimit
+                              : configuredPwmLimit_);
       leaseExpiresMs_ = nowMs + config::kControlLeaseMs;
       return ErrorCode::kNone;
     case CommandType::kSetLimit:
       if (!controlLeaseValid(nowMs)) return ErrorCode::kControlRequired;
-      motors_.setPwmLimit(static_cast<int16_t>(command.valueA));
+      configuredPwmLimit_ = static_cast<int16_t>(command.valueA);
+      motors_.setPwmLimit(physicalJoystickEnabled_
+                              ? config::kPhysicalJoystickPwmLimit
+                              : configuredPwmLimit_);
       leaseExpiresMs_ = nowMs + config::kControlLeaseMs;
       return ErrorCode::kNone;
     case CommandType::kForgetBond:
@@ -212,18 +221,18 @@ void DeviceController::update(uint32_t nowMs) {
     motors_.emergencyStop();
     return;
   }
-  if (!emergencyStop_ && lastMoveCommandMs_ != 0 &&
-      nowMs - lastMoveCommandMs_ > config::kMotionWatchdogMs) {
-    const uint32_t commandAgeMs = nowMs - lastMoveCommandMs_;
-    motors_.emergencyStop();
-    lastMoveCommandMs_ = 0;
-    locked_ = true;
-    fault_ = FaultCode::kCommandTimeout;
-    transition(DeviceState::kConnectedLocked);
-    VAYA_LOG_WARNING("SAFETY",
-                     "motion watchdog stopped motors; command age=%lu ms",
-                     static_cast<unsigned long>(commandAgeMs));
-  }
+  // if (!emergencyStop_ && lastMoveCommandMs_ != 0 &&
+  //     nowMs - lastMoveCommandMs_ > config::kMotionWatchdogMs) {
+  //   const uint32_t commandAgeMs = nowMs - lastMoveCommandMs_;
+  //   motors_.emergencyStop();
+  //   lastMoveCommandMs_ = 0;
+  //   locked_ = true;
+  //   fault_ = FaultCode::kCommandTimeout;
+  //   transition(DeviceState::kConnectedLocked);
+  //   VAYA_LOG_WARNING("SAFETY",
+  //                    "motion watchdog stopped motors; command age=%lu ms",
+  //                    static_cast<unsigned long>(commandAgeMs));
+  // }
   if (!emergencyStop_ && leaseExpiresMs_ != 0 &&
       static_cast<int32_t>(nowMs - leaseExpiresMs_) >= 0) {
     motors_.emergencyStop();

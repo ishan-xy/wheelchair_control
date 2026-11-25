@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+#include "vaya/config.h"
 #include "vaya/motor_controller.h"
 #include "vaya/types.h"
 
@@ -49,6 +50,7 @@ class DeviceController {
   bool safetyStartupReady_{true};
   bool charging_{false};
   bool physicalJoystickEnabled_{false};
+  int16_t configuredPwmLimit_{config::kDefaultPwmLimit};
   bool protocolNegotiated_{false};
   uint32_t lastSequence_{0};
   CommandType lastCommandType_{CommandType::kInvalid};

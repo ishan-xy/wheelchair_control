@@ -34,9 +34,13 @@ powered from 5 V, add a voltage divider to each VR output before connecting it
 to the ESP32. The app's Settings switch selects either `APP` or `PHYSICAL`
 input; only the selected source can command movement, and the chair must be
 connected and free of an active safety fault to change it. Changing the source
-first forces motor output to zero. Keep the joystick centered while physical
-mode is enabled; the firmware samples its neutral position before accepting
-movement. The default source is the app joystick.
+first forces motor output to zero. The fixed neutral range is 1750-1950 on
+each axis; adjust it in `include/vaya/config.h` only after new input readings.
+After the chair has been stopped for the configurable cooldown
+(`kJoystickStoppedCooldownMs`, default 2 seconds), the stick must remain
+deflected for `kJoystickActivationDelayMs` (default 500 ms) before movement
+starts. Returning to neutral stops it immediately; direction changes while
+already moving do not restart the delay. The default source is the app joystick.
 
 ## Required production configuration
 

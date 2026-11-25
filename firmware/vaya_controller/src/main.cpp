@@ -36,12 +36,12 @@ vaya::ToppleDetector toppleDetector;
 uint32_t telemetrySequence = 1;
 uint32_t lastTelemetryMs = 0;
 uint32_t lastJoystickMs = 0;
-uint32_t joystickCalibrationX = 0;
-uint32_t joystickCalibrationY = 0;
-uint16_t joystickCalibrationCount = 0;
-bool joystickWasEnabled = false;
-int32_t joystickCenterX = vaya::config::kJoystickCenter;
-int32_t joystickCenterY = vaya::config::kJoystickCenter;
+uint32_t joystickDeflectionStartedMs = 0;
+uint32_t joystickStoppedSinceMs = 0;
+bool joystickMotionActive = false;
+bool joystickWasNeutral = true;
+bool joystickStoppedSinceValid = false;
+bool joystickNeedsActivationDelay = false;
 bool emergencyAlarmActive() {
   const vaya::FaultCode fault = controller.fault();
   return fault == vaya::FaultCode::kToppleDetected ||
@@ -128,47 +128,68 @@ int16_t readJoystickAxis(int8_t pin, int32_t center, int32_t minimum,
 }
 
 void updatePhysicalJoystick(uint32_t nowMs) {
-  if (!vaya::config::kPhysicalJoystickAvailable) return;
-  if (!controller.physicalJoystickEnabled()) {
-    joystickWasEnabled = false;
-    joystickCalibrationCount = 0;
-    joystickCalibrationX = 0;
-    joystickCalibrationY = 0;
-    return;
-  }
-  if (!joystickWasEnabled) {
-    joystickWasEnabled = true;
-    joystickCalibrationCount = 0;
-    joystickCalibrationX = 0;
-    joystickCalibrationY = 0;
-  }
-  if (joystickCalibrationCount < vaya::config::kJoystickCalibrationSamples) {
-    joystickCalibrationX += analogRead(vaya::config::kJoystickXPin);
-    joystickCalibrationY += analogRead(vaya::config::kJoystickYPin);
-    ++joystickCalibrationCount;
-    if (joystickCalibrationCount == vaya::config::kJoystickCalibrationSamples) {
-      joystickCenterX = static_cast<int32_t>(
-          joystickCalibrationX / joystickCalibrationCount);
-      joystickCenterY = static_cast<int32_t>(
-          joystickCalibrationY / joystickCalibrationCount);
-      VAYA_LOG_INFO("JOYSTICK", "neutral calibrated X=%ld Y=%ld",
-                    static_cast<long>(joystickCenterX),
-                    static_cast<long>(joystickCenterY));
-    }
-    return;
+  if (!vaya::config::kPhysicalJoystickAvailable ||
+      !controller.physicalJoystickEnabled()) {
+      joystickDeflectionStartedMs = 0;
+      joystickMotionActive = false;
+      joystickWasNeutral = true;
+      joystickStoppedSinceValid = false;
+      joystickNeedsActivationDelay = false;
+      return;
   }
   if (nowMs - lastJoystickMs < vaya::config::kJoystickSampleMs) return;
   lastJoystickMs = nowMs;
   const int16_t axisX = readJoystickAxis(
-      vaya::config::kJoystickXPin, joystickCenterX,
+      vaya::config::kJoystickXPin, vaya::config::kJoystickXCenter,
       vaya::config::kJoystickXMinimum, vaya::config::kJoystickXMaximum,
       vaya::config::kJoystickXInverted);
   const int16_t axisY = readJoystickAxis(
-      vaya::config::kJoystickYPin, joystickCenterY,
+      vaya::config::kJoystickYPin, vaya::config::kJoystickYCenter,
       vaya::config::kJoystickYMinimum, vaya::config::kJoystickYMaximum,
       vaya::config::kJoystickYInverted);
   const int16_t appX = vaya::config::kJoystickAxesSwapped ? axisY : axisX;
   const int16_t appY = vaya::config::kJoystickAxesSwapped ? axisX : axisY;
+  const bool deflected = appX != 0 || appY != 0;
+  if (!deflected) {
+    if (joystickMotionActive) {
+      controller.handlePhysicalMove(0, 0, nowMs);
+    }
+    joystickDeflectionStartedMs = 0;
+    joystickMotionActive = false;
+    joystickWasNeutral = true;
+    joystickNeedsActivationDelay = false;
+    if (motors.snapshot().atRest) {
+      if (!joystickStoppedSinceValid) {
+        joystickStoppedSinceMs = nowMs;
+        joystickStoppedSinceValid = true;
+      }
+    } else {
+      joystickStoppedSinceValid = false;
+    }
+    return;
+  }
+
+  if (joystickWasNeutral) {
+    joystickWasNeutral = false;
+    joystickNeedsActivationDelay =
+        joystickStoppedSinceValid &&
+        nowMs - joystickStoppedSinceMs >=
+            vaya::config::kJoystickStoppedCooldownMs;
+    joystickStoppedSinceValid = false;
+  }
+
+  if (joystickNeedsActivationDelay && !joystickMotionActive) {
+    if (joystickDeflectionStartedMs == 0) {
+      joystickDeflectionStartedMs = nowMs;
+    }
+    if (nowMs - joystickDeflectionStartedMs <
+        vaya::config::kJoystickActivationDelayMs) {
+      return;
+    }
+    joystickNeedsActivationDelay = false;
+  }
+
+  joystickMotionActive = true;
   controller.handlePhysicalMove(appX, appY, nowMs);
 }
 
